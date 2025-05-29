@@ -64,7 +64,7 @@ jobs:
       - name: Initialize repo and sync
         run: |
           mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8650 -m oneplus_13r.xml --depth=1
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8650 -m oneplus_13r.xml
           repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync || { echo "repo sync failed"; exit 1; }
           cd kernel_platform
           if [ -f common/BUILD.bazel ]; then
@@ -79,6 +79,18 @@ jobs:
           fi
           rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
           rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
+
+      - name: Verify kernel source structure
+        run: |
+          cd kernel_workspace/kernel_platform
+          if [ ! -d "common/drivers" ]; then
+            echo "Error: drivers/ directory not found in kernel_platform/common"
+            exit 1
+          fi
+          if [ ! -f "common/Makefile" ]; then
+            echo "Error: common/Makefile not found"
+            exit 1
+          fi
 
       - name: Force remove -dirty suffix
         run: |
@@ -131,12 +143,19 @@ jobs:
         id: ksu_version
         run: |
           cd kernel_workspace
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s susfs-dev
-          cd ./KernelSU
+          git clone https://github.com/KernelSU/KernelSU.git -b main
+          cd KernelSU
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
           echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
           echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=$KSU_VERSION/" kernel/Makefile
+          cd ../kernel_platform
+          cp -r ../KernelSU/kernel ./
+          if [ -f kernel/Makefile ]; then
+            sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=$KSU_VERSION/" kernel/Makefile
+          else
+            echo "Error: kernel/Makefile not found for KSU version update"
+            exit 1
+          fi
 
       - name: Apply SUSFS Patch for SukiSU-Ultra
         run: |
@@ -160,8 +179,6 @@ jobs:
             echo "SUSFS patch applied successfully"
           else
             echo "Error: SUSFS patch failed to apply"
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            find . -name "*.rej" -exec echo "Rejected hunk in {}" \;
             exit 1
           fi
           if patch -p1 --dry-run < new_hooks.patch; then
@@ -169,8 +186,6 @@ jobs:
             echo "New hooks patch applied successfully"
           else
             echo "Error: New hooks patch failed to apply"
-            patch -p1 < new_hooks.patch || true
-            find . -name "*.rej" -exec echo "Rejected hunk in {}" \;
             exit 1
           fi
 
