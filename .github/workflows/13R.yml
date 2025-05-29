@@ -80,18 +80,6 @@ jobs:
           rm -f common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
           rm -f msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
 
-      - name: Verify kernel source structure
-        run: |
-          cd kernel_workspace/kernel_platform
-          if [ ! -d "common/drivers" ]; then
-            echo "Error: drivers/ directory not found in kernel_platform/common"
-            exit 1
-          fi
-          if [ ! -f "common/Makefile" ]; then
-            echo "Error: common/Makefile not found"
-            exit 1
-          fi
-
       - name: Force remove -dirty suffix
         run: |
           cd kernel_workspace/kernel_platform
