@@ -1,4 +1,4 @@
-name: Build OnePlus 13R Kernel with SukiSU Ultra and SUSFS
+name: Build OnePlus 13R
 
 on:
   workflow_dispatch:
