@@ -7,7 +7,7 @@ on:
         type: choice
         description: "Platform"
         required: true
-        default: 'sm8750'
+        default: 'sm8650'
         options: 
          - sm8750
          - sm8650
@@ -15,7 +15,7 @@ on:
         type: choice
         description: "Model"
         required: true
-        default: 'oneplus_13'
+        default: 'oneplus_13r'
         options: 
          - oneplus_13
          - oneplus_13_v
@@ -23,11 +23,12 @@ on:
          - oneplus_ace5_pro
          - oneplus_ace5_pro_v
          - oneplus_ace5
+         - oneplus_13r
       CPUD:
         type: choice
         description: "Phone Code"
         required: true
-        default: 'sun'
+        default: 'pineapple'
         options: 
          - sun
          - pineapple
@@ -35,7 +36,7 @@ on:
         type: choice
         description: "Operating System"
         required: true
-        default: 'android15'
+        default: 'android14'
         options: 
          - android15
          - android14
@@ -43,14 +44,14 @@ on:
         type: choice
         description: "Kernel Version"
         required: true
-        default: '6.6'
+        default: '6.1'
         options: 
          - '6.6'
          - '6.1'
       KERNEL_NAME:
         description: "Kernel Name"
         required: true
-        default: '-android15-Giang-TechsReview'
+        default: '-android14-11-o-gda998c994f5c0'
       KERNEL_TIME:
        description: "Kernel Build Date"
        required: true
@@ -63,7 +64,7 @@ on:
       enable_feature_y:
        description: "Integrate LZ4KD"
        required: false
-       default: true
+       default: false
        type: boolean
       enable_feature_z:
        description: "Integrate Fengchi"
