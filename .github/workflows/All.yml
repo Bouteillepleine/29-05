@@ -95,6 +95,9 @@ jobs:
             ;;
            oneplus_ace5)
              MODEL_NAME="Oneplus Ace 5"
+              ;;
+           oneplus_13r)
+             MODEL_NAME="Oneplus 13R"
             ;;
            oneplus_ace5_pro)
             MODEL_NAME="Oneplus Ace 5 Pro"
@@ -120,8 +123,8 @@ jobs:
           
       - name: Configure Git
         run: |
-         git config --global user.name "giang"
-         git config --global user.email "dasklney@giang.us"
+         git config --global user.name "0+builder"
+         git config --global user.email "0+builder@yahoo.com"
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
