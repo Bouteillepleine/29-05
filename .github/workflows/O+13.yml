@@ -288,6 +288,11 @@ jobs:
          cp -r ./sched_ext/* ./common/kernel/sched
          rm -rf ./sched_ext/.git
          cd common/kernel/sched
+      - name: Ensure lld linker is installed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld
+          ld.lld --version
       - name: Build Kernel
         run: |
           export KBUILD_BUILD_TIMESTAMP="${{ github.event.inputs.KERNEL_TIME }}"
