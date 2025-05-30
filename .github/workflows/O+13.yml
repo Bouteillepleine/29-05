@@ -1,4 +1,4 @@
-name: O13
+name: O+13
 on:
   workflow_dispatch:
     inputs:
