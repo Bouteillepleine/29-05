@@ -1,4 +1,4 @@
-name: Build OnePlus
+name: 13R
 on:
   workflow_dispatch:
     inputs:
@@ -15,16 +15,16 @@ on:
         type: choice
         options:
           - 'oneplus_13r'
-        default: 'oneplus_13r'
+        default: 'oneplus13r'
       CPUD:
-        description: "Pineapple"
+        description: "pineapple"
         required: true
         type: choice
         options:
           - 'pineapple'          
         default: 'pineapple'
       ANDROID_VERSION:
-        description: "Android 14"
+        description: "android14"
         required: true
         type: choice
         options:
@@ -55,8 +55,8 @@ jobs:
 
       - name: Configure Git
         run: |
-         git config --global user.name "build"
-         git config --global user.email "2210077278@qq.com"
+         git config --global user.name "bulid0+"
+         git config --global user.email "bulid0+@qq.com"
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
@@ -83,10 +83,10 @@ jobs:
          sed -i '$s|echo "\$res"|echo "\"|' kernel_platform/msm-kernel/scripts/setlocalversion
          sed -i '$s|echo "\$res"|echo "\"|' kernel_platform/external/dtc/scripts/setlocalversion
           
-      - name: Set up Su Xiaoqing Ultra
+      - name: Set up SukiSU Ultra
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SuXiaoqing-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
           cd ./KernelSU
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
@@ -98,7 +98,7 @@ jobs:
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/Xiaomichael/kernel_patches.git
-          git clone https://github.com/ShirkNeko/SuXiaoqing_patch.git
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git
           cd kernel_platform
           # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
@@ -106,16 +106,16 @@ jobs:
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           # Copy lz4k
-          cp -r ../SuXiaoqing_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-          cp -r ../SuXiaoqing_patch/other/zram/lz4k/lib/* ./common/lib
-          cp -r ../SuXiaoqing_patch/other/zram/lz4k/crypto/* ./common/crypto
+          cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
+          cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
+          cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
           
           cd ./common
           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
           patch -p1 -F 3 < syscall_hooks.patch
-          cp ../../SuXiaoqing_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
+          cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || true
       - name: Apply new hook & Add configuration
         run: |
@@ -141,9 +141,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # Add Thin LTO configuration
-          echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig          
       - name: Add BBR Support
         run: |
           cd kernel_workspace/kernel_platform
@@ -205,7 +203,11 @@ jobs:
           sed -i '$s|echo "\$res"|echo "\"|' kernel_platform/common/scripts/setlocalversion            
           sed -i '$s|echo "\$res"|echo "\"|' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\"|' kernel_platform/external/dtc/scripts/setlocalversion
-          LTO=thin ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
+            ./kernel_platform/build_with_bazel.py -t ${{ github.event.inputs.CPUD }} gki
+          else
+            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
+          fi
       - name: Make AnyKernel3
         run: |
           git clone https://github.com/Xiaomichael/AnyKernel3 --depth=1
@@ -235,18 +237,18 @@ jobs:
             if [ "$(realpath "$image_path")" != "$(realpath "$dir1"Image)" ]; then
               cp "$image_path" "$dir1"
             else
-              echo "Source file is the same as target, skipping copy"
+              echo "源文件与目标相同，跳过复制"
             fi
             cp "$dir1"Image ./AnyKernel3/Image
           else
-            echo "Image file not found, build may have failed"
+            echo "未找到 Image 文件，构建可能失败"
             exit 1
           fi
          
       - name: Apply KPM configs
         run: |
           cd kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist
-          curl -LO https://github.com/ShirkNeko/SuXiaoqing_KernelPatch_patch/releases/download/0.11-beta/patch_linux
+          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
           chmod +x patch_linux
           ./patch_linux
           rm -f Image
@@ -257,7 +259,7 @@ jobs:
       - name: Upload AnyKernel3 with lz4kd
         uses: actions/upload-artifact@v4
         with:
-         name: AnyKernel3_SuXiaoqing_Ultra_lz4kd_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+         name: AK3_SukiSU_Ultra_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: ./AnyKernel3/*
          
       - name: Upload Image
