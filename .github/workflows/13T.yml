@@ -1,17 +1,17 @@
-name: 13T
+name: O+13T 
 on:
   workflow_dispatch:
     inputs:
       CPU:
-        description: "Branch"
+        description: "Select compilation CPU type"
         required: true
         default: 'sm8750'
       FEIL:
-        description: "Configuration File"
+        description: "Device configuration"
         required: true
         default: 'oneplus_13t'
       CPUD:
-        description: "Processor Codename"
+        description: "Processor codename"
         required: true
         default: 'sun'
       ANDROID_VERSION:
@@ -19,33 +19,33 @@ on:
         required: true
         default: 'android15'
       KERNEL_VERSION:
-        description: "Kernel Version"
+        description: "Kernel version"
         required: true
         default: '6.6'
       KERNEL_NAME:
-        description: "Kernel Name Modification (Chinese characters not allowed)"
+        description: "Custom kernel name (e.g., -By-Ehsan149-4k)" 
         required: true
-        default: '-By-kuan-FutabaWa'
+        default: '-By-Ehsan149-4k' 
       KERNEL_TIME:
-        description: "Kernel Build Date Modification (defaults to original)"
-        required: true
-        default: '2024-12-17 23:36:49 UTC'
+       description: "Custom kernel build time (default: factory)"
+       required: true
+       default: '2024-12-17 23:36:49 UTC'
       enable_feature_x:
-        description: "Enable KPM"
-        required: false
-        default: false
-        type: boolean
+       description: "Enable KPM support"
+       required: false
+       default: false
+       type: boolean
       enable_feature_y:
-        description: "Enable LZ4KD"
-        required: false
-        default: false
-        type: boolean
+       description: "Enable lz4kd compression"
+       required: false
+       default: false
+       type: boolean
       enable_feature_z:
-        description: "Add Fengchi Driver"
-        required: false
-        default: false
-        type: boolean
-
+       description: "Enable FengChi driver (sched_ext)"
+       required: false
+       default: false
+       type: boolean
+      
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -54,11 +54,14 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
     steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
+          root-reserve-mb: 8192 
+          temp-reserve-mb: 2048 
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
@@ -66,71 +69,103 @@ jobs:
           
       - name: Configure Git
         run: |
-         git config --global user.name "build"
-         git config --global user.email "3199167602@qq.com"
+         git config --global user.name "0+builder"
+         git config --global user.email "0+builder@yahoo.com"
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
-         sudo apt install -y python3 git curl
+         sudo apt install -y python3 git curl patch
       - name: Install repo tool
         run: |
-         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-         chmod a+x ~/repo
-         sudo mv ~/repo /usr/local/bin/repo
+         mkdir -p $GITHUB_WORKSPACE/bin
+         curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > $GITHUB_WORKSPACE/bin/repo
+         chmod a+x $GITHUB_WORKSPACE/bin/repo
+         echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+         repo --version || echo "WARN: repo --version failed after installation attempt."
+      - name: Clone TheWildJames Patches Repo
+        run: |
+          git clone https://github.com/TheWildJames/kernel_patches.git TheWildJames_kernel_patches --depth=1
       - name: Initialize repo and sync
         run: |
+         set -e 
+         which repo || (echo "ERROR: 'which repo' did not find repo in PATH" && exit 1)
+         
          mkdir kernel_workspace && cd kernel_workspace
          repo init -u https://github.com/JiuGeFaCai/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
-         repo --trace sync -c -j$(nproc --all) --no-tags
+         repo --trace sync -c -j$(nproc --all) --no-tags --no-clone-bundle --optimized-fetch --fail-fast
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
          
       - name: Set up SukiSU
         run: |
-         cd kernel_workspace/kernel_platform
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-dev
          cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606) 
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-         export KSU_VERSION=$KSU_VERSION
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
         
       - name: Set up susfs
         run: |
-           cd kernel_workspace
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-           cd kernel_platform        
-           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
-           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           #lz4k
-           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
-           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           # Apply patches
-           cd ./common
-           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
+           set -e 
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+           SUSFS_CLONE_TARGET_REL="../susfs4ksu" 
+           SUKISU_PATCH_CLONE_TARGET_REL="../SukiSU_patch"
+           SUSFS_BRANCH="gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}"
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "${SUSFS_BRANCH}" "${SUSFS_CLONE_TARGET_REL}" --depth=1
+           if [ ! -d "${SUSFS_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone susfs4ksu"; exit 1; fi
+           git clone https://github.com/ShirkNeko/SukiSU_patch.git "${SUKISU_PATCH_CLONE_TARGET_REL}" --depth=1
+           if [ ! -d "${SUKISU_PATCH_CLONE_TARGET_REL}" ]; then echo "ERROR: Failed to clone SukiSU_patch"; exit 1; fi
+           PATCH_FILE_NAME="50_add_susfs_in_${SUSFS_BRANCH}.patch" 
+           EXPECTED_PATCH_PATH="${SUSFS_CLONE_TARGET_REL}/kernel_patches/${PATCH_FILE_NAME}"
+           if [ ! -f "${EXPECTED_PATCH_PATH}" ]; then
+               echo "ERROR: SUSFS Patch file ${EXPECTED_PATCH_PATH} not found!"
+               exit 1
+           fi
+           
+           cp "${EXPECTED_PATCH_PATH}" ./common/
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/fs/"* ./common/fs/
+           cp "${SUSFS_CLONE_TARGET_REL}/kernel_patches/include/linux/"* ./common/include/linux/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/include/linux/"* ./common/include/linux/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/lib/"* ./common/lib/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k/crypto/"* ./common/crypto/
+           cp -r "${SUKISU_PATCH_CLONE_TARGET_REL}/other/zram/lz4k_oplus" ./common/lib/
+           
+           cd ./common 
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "${PATCH_FILE_NAME}"
+           sed -i '/#include <trace\/hooks\/fs.h>/d' "${PATCH_FILE_NAME}"
+           patch -p1 < "${PATCH_FILE_NAME}" || echo "WARN: SUSFS base patch may not have applied cleanly."
+           cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/hooks/syscall_hooks.patch" ./ 
            patch -p1 -F 3 < syscall_hooks.patch
-           echo "Completed"
+           echo "Finished 'Set up susfs' step."
       - name: Apply lz4kd Patches
         if: ${{inputs.enable_feature_y }}
         run: |
-          cd kernel_workspace/kernel_platform/common
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
-            patch -p1 -F 3 < lz4kd.patch || true
-           
-      - name: Add SUSFS Configuration Settings
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cp "${GITHUB_WORKSPACE}/kernel_workspace/SukiSU_patch/other/zram/zram_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch" ./
+          patch -p1 -F 3 < lz4kd.patch || echo "WARN: lz4kd patch failed."
+      
+      - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
-          cd kernel_workspace/kernel_platform
+          set -e
+          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
+          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
+          echo "ECN and TCP Pacing tweaks successfully applied via SED."
+          
+      - name: Add Kernel Configuration Settings and Custom Kernel Name
+        run: |
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
+          
+          # Defconfig additions
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          # Add VFS configuration settings
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          # Add SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -146,77 +181,60 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
           echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-
-           for config in CONFIG_TCP_CONG_ADVANCED CONFIG_TCP_CONG_BBR CONFIG_DEFAULT_TCP_CONG CONFIG_TCP_CONG_CDG CONFIG_DEFAULT_BBR CONFIG_DEFAULT_CUBIC CONFIG_DEFAULT_CDG CONFIG_NET_SCH_DEFAULT CONFIG_DEFAULT_FQ CONFIG_DEFAULT_NET_SCH CONFIG_NET_SCH_SFQ CONFIG_NET_SCH_FQ_CODEL CONFIG_NET_SCH_TBF CONFIG_TCP_CONG_BIC CONFIG_TCP_CONG_WESTWOOD CONFIG_TCP_CONG_HTCP CONFIG_IP_NF_TARGET_ECN CONFIG_IP_ECN CONFIG_TCP_ECN CONFIG_IPV6_ECN; do
-            sed -i "/$config=/d" "$CONFIG_FILE"
-          done
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\"" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_CONG_CDG=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_BBR=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_CUBIC=n" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_CDG=n" >> "$CONFIG_FILE"
-          echo "CONFIG_NET_SCH_DEFAULT=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_FQ=y" >> "$CONFIG_FILE"
-          echo "CONFIG_DEFAULT_NET_SCH=\"fq\"" >> "$CONFIG_FILE"
-          echo "CONFIG_NET_SCH_SFQ=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> "$CONFIG_FILE"
-          echo "CONFIG_NET_SCH_TBF=y" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_CONG_HTCP=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP_ECN=y" >> "$CONFIG_FILE"
-          echo "CONFIG_TCP_ECN=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IPV6_ECN=y" >> "$CONFIG_FILE"
-          for config in CONFIG_IP_NF_TARGET_TTL CONFIG_IP6_NF_TARGET_HL CONFIG_IP6_NF_MATCH_HL; do
-            sed -i "/$config=/d" "$CONFIG_FILE"
-          done
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_FILE"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_FILE"
-          for config in CONFIG_DEBUG_KERNEL CONFIG_DYNAMIC_DEBUG CONFIG_DEBUG_INFO; do
-            sed -i "/$config=/d" "$CONFIG_FILE"
-          done
-          echo "CONFIG_DEBUG_KERNEL=n" >> "$CONFIG_FILE"
-          echo "CONFIG_DYNAMIC_DEBUG=n" >> "$CONFIG_FILE"
-          echo "CONFIG_DEBUG_INFO=n" >> "$CONFIG_FILE"
-          
-          #Remove check_defconfig
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          if [ "${{ github.event.inputs.KERNEL_VERSION }}" != "5.10" ]; then
+            echo "CONFIG_ZRAM_DEF_COMP_LZORLE=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_ZRAM_DEF_COMP_LZO=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_ZRAM_DEF_COMP_LZ4=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo 'CONFIG_ZRAM_DEF_COMP="lz4"' >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # Kernel Name defconfig settings - For precise kernel name
+          echo "Modifying defconfig for custom kernel name..."
+          sed -i '/CONFIG_LOCALVERSION_AUTO/d' ./common/arch/arm64/configs/gki_defconfig 
+          sed -i '/CONFIG_LOCALVERSION=/d' ./common/arch/arm64/configs/gki_defconfig 
+          echo "CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\"" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "Defconfig set: CONFIG_LOCALVERSION=\"${{ github.event.inputs.KERNEL_NAME }}\""
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "BUILD Kernel"
+          git add -A && git commit -a -m "Update defconfig with all features and precise custom kernel name" || echo "No defconfig changes to commit."
       
       - name: Add KPM Configuration Settings
         if: ${{inputs.enable_feature_x }}
         run: |
-          cd kernel_workspace/kernel_platform
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-         
-          #Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
-          git add -A && git commit -a -m "BUILD Kernel"
-          
-      - name: Add make name
+          git add -A && git commit -a -m "Add KPM config" || echo "No KPM changes to commit."
+      - name: Apply Hide Stuff Patch
         run: |
-         cd kernel_workspace/kernel_platform
-         sed -i 's/res="\$res\$(cat "\$file")"/res="-android15-8-g013ec21bba94-abogki383916444"/g' ./common/scripts/setlocalversion
-         sudo sed -i 's/-android15-8-g013ec21bba94-abogki383916444/${{ github.event.inputs.KERNEL_NAME }}/g' ./common/scripts/setlocalversion
-      - name: Add sched_ext
+          set -e
+          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common
+          cp $GITHUB_WORKSPACE/TheWildJames_kernel_patches/69_hide_stuff.patch ./
+          patch -p1 --no-backup-if-mismatch < 69_hide_stuff.patch || echo "WARN: 69_hide_stuff.patch failed or applied with issues."
+                 
+      - name: Add sched_ext (FengChi driver)
         if: ${{inputs.enable_feature_z }}
         run: |
-         cd kernel_workspace/kernel_platform/
-         git clone https://github.com/HanKuCha/sched_ext.git
-         cp -r ./sched_ext/* ./common/kernel/sched
-         rm -rf ./sched_ext/.git
-         cd common/kernel/sched
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/
+         git clone https://github.com/HanKuCha/sched_ext.git ./sched_ext_temp --depth=1
+         cp -r ./sched_ext_temp/* ./common/kernel/sched
+         rm -rf ./sched_ext_temp
          
       - name: Set Kernel build timestamp
         run: |
@@ -225,32 +243,41 @@ jobs:
           
       - name: Build Kernel
         run: |
+           set -e
+           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
-           cd kernel_workspace/kernel_platform
-           tools/bazel run --config=fast --config=stamp --lto=thin //common:kernel_aarch64_dist -- --dist_dir=dist
-      - name: Make AnyKernel3
+           tools/bazel run --config=fast --config=stamp --lto=thin --verbose_failures //common:kernel_aarch64_dist -- --dist_dir=dist
+      - name: Make AnyKernel3 (Patch Image)
         run: |
-         cd kernel_workspace/kernel_platform/dist/
+         set -e
+         cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
          ./patch_linux
          rm -f Image
          mv oImage Image
          
-      - name: Make AnyKernel3
+      - name: Prepare AnyKernel3 Zip
         run: |
-         git clone https://github.com/HanKuCha/AnyKernel3.git --depth=1      
-         rm -rf ./AnyKernel3/.git
-         rm -rf ./AnyKernel3/push.sh
-         cp kernel_workspace/kernel_platform/dist/Image ./AnyKernel3/
-      - name: Upload AnyKernel3
-        uses: actions/upload-artifact@v4
-        with:
-         name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
-         path: ./AnyKernel3/*
+         set -e
+         cd $GITHUB_WORKSPACE 
+         git clone https://github.com/HanKuCha/AnyKernel3.git AnyKernel3_Package --depth=1      
+         rm -rf ./AnyKernel3_Package/.git
+         rm -rf ./AnyKernel3_Package/push.sh
          
-      - name: Upload Image
+         cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         
+         cd AnyKernel3_Package
+         zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
+         cd ..
+      - name: Upload AnyKernel3 Zip
         uses: actions/upload-artifact@v4
         with:
-         name: Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
+         name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
+         path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
+         
+      - name: Upload Raw Image
+        uses: actions/upload-artifact@v4
+        with:
+         name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: kernel_workspace/kernel_platform/dist/Image
