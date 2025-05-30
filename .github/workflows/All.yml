@@ -1,4 +1,4 @@
-name: SukiSU
+name: Suki
 
 on:
   workflow_dispatch:
@@ -20,10 +20,10 @@ on:
          - oneplus_13
          - oneplus_13_v
          - oneplus_13t
+         - oneplus_13r
          - oneplus_ace5_pro
          - oneplus_ace5_pro_v
          - oneplus_ace5
-         - oneplus_13r
       CPUD:
         type: choice
         description: "Phone Code"
@@ -51,7 +51,7 @@ on:
       KERNEL_NAME:
         description: "Kernel Name"
         required: true
-        default: '-android14-11-o-gda998c994f5c0'
+        default: '-android15-ogki-ofqF98jhfbfkr'
       KERNEL_TIME:
        description: "Kernel Build Date"
        required: true
@@ -64,7 +64,7 @@ on:
       enable_feature_y:
        description: "Integrate LZ4KD"
        required: false
-       default: false
+       default: true
        type: boolean
       enable_feature_z:
        description: "Integrate Fengchi"
@@ -93,11 +93,11 @@ jobs:
           oneplus_13t)
              MODEL_NAME="Oneplus 13T"
             ;;
-           oneplus_ace5)
-             MODEL_NAME="Oneplus Ace 5"
-              ;;
            oneplus_13r)
              MODEL_NAME="Oneplus 13R"
+            ;;
+           oneplus_ace5)
+             MODEL_NAME="Oneplus Ace 5"
             ;;
            oneplus_ace5_pro)
             MODEL_NAME="Oneplus Ace 5 Pro"
@@ -123,8 +123,8 @@ jobs:
           
       - name: Configure Git
         run: |
-         git config --global user.name "0+builder"
-         git config --global user.email "0+builder@yahoo.com"
+         git config --global user.name "giang"
+         git config --global user.email "dasklney@giang.us"
       - name: Install dependencies
         run: |
          sudo apt update && sudo apt upgrade -y
@@ -172,7 +172,7 @@ jobs:
            cd ./common
            
            MODEL="${{ inputs.FEIL }}"
-           if [[ "$MODEL" =~ oneplus_13 || "$MODEL" =~ ace5_pro ]]; then
+           if { [[ "$MODEL" =~ oneplus_13 || "$MODEL" =~ ace5_pro ]]; } && [[ "$MODEL" != "oneplus_13t" ]]; then
              FILENAME="50_add_susfs_in_gki-${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}.patch"
              sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "$FILENAME"
              sed -i '/#include <trace\/hooks\/fs.h>/d' "$FILENAME"
@@ -181,6 +181,7 @@ jobs:
            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
            patch -p1 -F 3 < syscall_hooks.patch
            echo "Completed"
+      
       - name: Apply HMBird GKI patch
         if: contains( inputs.FEIL, 'ace5_pro' )
         run: |
@@ -256,14 +257,13 @@ jobs:
          cd ../../../
          git add -A
          git commit -m "Add HMBird GKI patch" || true
- 
 
       - name: Apply lz4kd Patches
         if: ${{ inputs.enable_feature_y }}
         run: |
           cd kernel_workspace/kernel_platform/common
-            cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.KERNEL_VERSION }}/lz4kd.patch ./
-            patch -p1 -F 3 < lz4kd.patch || true
+          cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.KERNEL_VERSION }}/lz4kd.patch ./
+          patch -p1 -F 3 < lz4kd.patch || true
            
       - name: Add SUSFS Configuration Settings
         run: |
@@ -295,18 +295,43 @@ jobs:
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           
-          #Remove check_defconfig
+          # Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -a -m "BUILD Kernel"
       
+      - name: Apply ECN and TCP Pacing Tweaks via SED
+        run: |
+          set -e
+          # Append configuration options to gki_defconfig
+          CONFIG_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/arch/arm64/configs/gki_defconfig"
+          if [ ! -f "$CONFIG_PATH" ]; then echo "ERROR: $CONFIG_PATH not found!"; exit 1; fi
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$CONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "$CONFIG_PATH"
+          echo "CONFIG_RCU_TRACE=n" >> "$CONFIG_PATH"
+          
+          # Apply TCP and ECN tweaks via sed
+          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
+          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
+          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
+          echo "ECN and TCP Pacing tweaks successfully applied via SED."
+          
       - name: Add KPM Configuration Settings
         if: ${{ inputs.enable_feature_x }}
         run: |
           cd kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
          
-          #Remove check_defconfig
+          # Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -a -m "BUILD Kernel"
@@ -314,13 +339,10 @@ jobs:
       - name: Add kernel custom name
         run: |
          cd kernel_workspace/kernel_platform
-         #sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         #sudo sed -i 's/-4k/${{ inputs.KERNEL_NAME }}/g' ./common/arch/arm64/configs/gki_defconfig
-         
          sed -i 's/res="\$res\$(cat "\$file")"/res="-android15-8-g013ec21bba94-abogki383916444"/g' ./common/scripts/setlocalversion
          sudo sed -i 's/-android15-8-g013ec21bba94-abogki383916444/${{ inputs.KERNEL_NAME }}/g' ./common/scripts/setlocalversion
       - name: Add Fengchi
-        if: ${{inputs.enable_feature_z }}
+        if: ${{ inputs.enable_feature_z }}
         run: |
          cd kernel_workspace/kernel_platform/
          git clone https://github.com/HanKuCha/sched_ext.git
@@ -333,28 +355,6 @@ jobs:
           echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> $GITHUB_ENV
           echo "BUILDDATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
           
-      - name: Apply ECN and TCP Pacing Tweaks via SED
-        run: |
-          set -e
-          cd kernel_workspace/kernel_platform
-          TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
-          if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
-          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
-          echo "ECN and TCP Pacing tweaks successfully applied via SED."
-          CONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
-          if [ ! -f "$CONFIG_PATH" ]; then echo "ERROR: $CONFIG_PATH not found!"; exit 1; fi
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_PATH"
-          echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_PATH"
-          echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_PATH"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_PATH"
-          echo "CONFIG_TCP_CONG_HTCP=n" >> "$CONFIG_PATH"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_PATH"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_PATH"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_PATH"
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "$CONFIG_PATH"
-          
       - name: Build Kernel
         run: |
            export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
@@ -364,11 +364,7 @@ jobs:
       - name: Apply Linux Patch
         run: |
          MODEL="${{ inputs.FEIL }}"
-         #if [[ "$MODEL" == "oneplus_ace5_pro" ]]; then
-         #    cd kernel_workspace/kernel_platform/common/out/arch/arm64/boot
-         #else
          cd kernel_workspace/kernel_platform/dist/
-         #fi
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -414,4 +410,4 @@ jobs:
            cd download
            cd ${{ env.IMG_FILE }} ; zip -r ../${{ env.IMG_FILE }}.zip . * ; cd ..
            cd ${{ env.ANYKERNEL3_FILE }} ; zip -r ../${{ env.ANYKERNEL3_FILE }}.zip . * ; cd ..
-           cp ../kernel_workspace/kernel_platform/dist/boot.img ${{ inputs.FEIL }}_boot.img
+           cp ../kernel_workspace/kernel_platform/dist/boot.img ${{ inputs.FEIL }}_boot.img     
