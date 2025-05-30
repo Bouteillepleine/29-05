@@ -332,21 +332,24 @@ jobs:
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
+          cd kernel_workspace/kernel_platform
           TCP_IPV4_PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/net/ipv4/tcp_ipv4.c"
           if [ ! -f "$TCP_IPV4_PATH" ]; then echo "ERROR: $TCP_IPV4_PATH not found!"; exit 1; fi
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          CONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+          if [ ! -f "$CONFIG_PATH" ]; then echo "ERROR: $CONFIG_PATH not found!"; exit 1; fi
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BBR=y" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CONFIG_PATH"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$CONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_ECN=y" >> "$CONFIG_PATH"
           
       - name: Build Kernel
         run: |
