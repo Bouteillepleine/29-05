@@ -51,7 +51,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update && sudo apt upgrade -y
-          sudo apt install -y python3 git curl ccache libelf-dev flex bison libssl-dev bc libncurses-dev zlib1g-dev make
+          sudo apt install -y python3 git curl ccache libelf-dev flex bison libssl-dev bc libncurses-dev zlib1g-dev make \
+            clang lld llvm llvm-dev llvm-ar llvm-nm \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu pahole
+          # Show tool versions for debugging
+          clang --version
+          llvm-ar --version
+          aarch64-linux-gnu-gcc --version
+          pahole --version
       - name: Restore ccache
         uses: actions/cache@v3
         with:
@@ -198,6 +205,7 @@ jobs:
           cd kernel_workspace/kernel_platform/common
           cp ../../SukiSU_patch/other/zram/zram_patch/6.6/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || { echo "lz4kd patch failed to apply"; exit 1; }
+          
       - name: Configure Kernel
         run: |
           cd kernel_workspace/kernel_platform
