@@ -93,12 +93,12 @@ jobs:
           oneplus_13t)
              MODEL_NAME="Oneplus 13T"
             ;;
-           oneplus_13r)
-             MODEL_NAME="Oneplus 13R"
-            ;;
            oneplus_ace5)
              MODEL_NAME="Oneplus Ace 5"
-            ;;
+          ;;
+           oneplus_13r)
+             MODEL_NAME="Oneplus 13r"
+             ;;
            oneplus_ace5_pro)
             MODEL_NAME="Oneplus Ace 5 Pro"
             ;;
@@ -173,6 +173,7 @@ jobs:
            
            MODEL="${{ inputs.FEIL }}"
            if { [[ "$MODEL" =~ oneplus_13 || "$MODEL" =~ ace5_pro ]]; } && [[ "$MODEL" != "oneplus_13t" ]]; then
+           #if [[ "$MODEL" =~ oneplus_13 || "$MODEL" =~ ace5_pro ]]; then
              FILENAME="50_add_susfs_in_gki-${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}.patch"
              sed -i 's/-32,12 +32,38/-32,11 +32,37/g' "$FILENAME"
              sed -i '/#include <trace\/hooks\/fs.h>/d' "$FILENAME"
@@ -180,8 +181,7 @@ jobs:
            patch -p1 < 50_add_susfs_in_gki-${{ inputs.ANDROID_VERSION }}-${{ inputs.KERNEL_VERSION }}.patch || true
            cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
            patch -p1 -F 3 < syscall_hooks.patch
-           echo "Completed"
-      
+           echo "完成"
       - name: Apply HMBird GKI patch
         if: contains( inputs.FEIL, 'ace5_pro' )
         run: |
@@ -257,13 +257,14 @@ jobs:
          cd ../../../
          git add -A
          git commit -m "Add HMBird GKI patch" || true
+ 
 
       - name: Apply lz4kd Patches
         if: ${{ inputs.enable_feature_y }}
         run: |
           cd kernel_workspace/kernel_platform/common
-          cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.KERNEL_VERSION }}/lz4kd.patch ./
-          patch -p1 -F 3 < lz4kd.patch || true
+            cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.KERNEL_VERSION }}/lz4kd.patch ./
+            patch -p1 -F 3 < lz4kd.patch || true
            
       - name: Add SUSFS Configuration Settings
         run: |
@@ -295,11 +296,11 @@ jobs:
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           
-          # Remove check_defconfig
+          #Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -a -m "BUILD Kernel"
-      
+
       - name: Apply ECN and TCP Pacing Tweaks via SED
         run: |
           set -e
@@ -324,14 +325,14 @@ jobs:
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' "$TCP_IPV4_PATH"
           sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' "$TCP_IPV4_PATH"
           echo "ECN and TCP Pacing tweaks successfully applied via SED."
-          
+      
       - name: Add KPM Configuration Settings
         if: ${{ inputs.enable_feature_x }}
         run: |
           cd kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
          
-          # Remove check_defconfig
+          #Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
           cd common
           git add -A && git commit -a -m "BUILD Kernel"
@@ -339,10 +340,13 @@ jobs:
       - name: Add kernel custom name
         run: |
          cd kernel_workspace/kernel_platform
+         #sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
+         #sudo sed -i 's/-4k/${{ inputs.KERNEL_NAME }}/g' ./common/arch/arm64/configs/gki_defconfig
+         
          sed -i 's/res="\$res\$(cat "\$file")"/res="-android15-8-g013ec21bba94-abogki383916444"/g' ./common/scripts/setlocalversion
          sudo sed -i 's/-android15-8-g013ec21bba94-abogki383916444/${{ inputs.KERNEL_NAME }}/g' ./common/scripts/setlocalversion
       - name: Add Fengchi
-        if: ${{ inputs.enable_feature_z }}
+        if: ${{inputs.enable_feature_z }}
         run: |
          cd kernel_workspace/kernel_platform/
          git clone https://github.com/HanKuCha/sched_ext.git
@@ -364,7 +368,11 @@ jobs:
       - name: Apply Linux Patch
         run: |
          MODEL="${{ inputs.FEIL }}"
+         #if [[ "$MODEL" == "oneplus_ace5_pro" ]]; then
+         #    cd kernel_workspace/kernel_platform/common/out/arch/arm64/boot
+         #else
          cd kernel_workspace/kernel_platform/dist/
+         #fi
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
          ./patch_linux
@@ -410,4 +418,4 @@ jobs:
            cd download
            cd ${{ env.IMG_FILE }} ; zip -r ../${{ env.IMG_FILE }}.zip . * ; cd ..
            cd ${{ env.ANYKERNEL3_FILE }} ; zip -r ../${{ env.ANYKERNEL3_FILE }}.zip . * ; cd ..
-           cp ../kernel_workspace/kernel_platform/dist/boot.img ${{ inputs.FEIL }}_boot.img     
+           cp ../kernel_workspace/kernel_platform/dist/boot.img ${{ inputs.FEIL }}_boot.img
