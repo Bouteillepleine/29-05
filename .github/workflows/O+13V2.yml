@@ -56,7 +56,6 @@ jobs:
       CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
     steps:
-      # Step order corrected: Maximize space first
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -66,17 +65,16 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-
+          
       - name: Check out repository code
         uses: actions/checkout@v4
 
-      - name: List files in GITHUB_WORKSPACE after checkout # Debug step
+      - name: List files in GITHUB_WORKSPACE after checkout and maximize space
         run: |
-          echo "Listing GITHUB_WORKSPACE root after checkout (and after maximize space):"
+          echo "Listing GITHUB_WORKSPACE root (after maximize space and checkout):"
           ls -la $GITHUB_WORKSPACE
           echo "Listing kernel_addons directory if it exists:"
           ls -la $GITHUB_WORKSPACE/kernel_addons || echo "kernel_addons directory not found or is empty."
-          echo "Checking for hmbird_patch.c specifically:"
           if [ -f "$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" ]; then
             echo "hmbird_patch.c FOUND at $GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
           else
@@ -182,21 +180,13 @@ jobs:
           set -e
           echo "Applying HMBird GKI patch..."
           HMBIRD_PATCH_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common/drivers"
-          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c" 
-          # Debug lines to ensure file is found after checkout and maximize space
-          echo "DEBUG (HMBird Step): Value of GITHUB_WORKSPACE is: $GITHUB_WORKSPACE"
-          echo "DEBUG (HMBird Step): Expected HMBIRD_SOURCE_FILE path is: $HMBIRD_SOURCE_FILE"
-          echo "DEBUG (HMBird Step): Listing contents of $GITHUB_WORKSPACE/kernel_addons:"
-          ls -la $GITHUB_WORKSPACE/kernel_addons || echo "DEBUG (HMBird Step): kernel_addons directory not found or ls failed."
+          HMBIRD_SOURCE_FILE="$GITHUB_WORKSPACE/kernel_addons/hmbird_patch.c"
           if [ ! -f "$HMBIRD_SOURCE_FILE" ]; then
             echo "CRITICAL ERROR: $HMBIRD_SOURCE_FILE not found right before cp command!"
-            echo "Contents of $GITHUB_WORKSPACE might be relevant:"
-            ls -la $GITHUB_WORKSPACE
             exit 1
           fi
           
           mkdir -p "$HMBIRD_PATCH_DIR"
-          echo "DEBUG (HMBird Step): Attempting to copy $HMBIRD_SOURCE_FILE to $HMBIRD_PATCH_DIR/"
           cp "$HMBIRD_SOURCE_FILE" "$HMBIRD_PATCH_DIR/"
           echo "hmbird_patch.c copied to drivers directory."
           
@@ -270,9 +260,6 @@ jobs:
           echo "CONFIG_CRYPTO_842=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_TCP_CONG_BBR=y" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_BIC=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "${DEFCONFIG_PATH}"
-          echo "CONFIG_TCP_CONG_HTCP=n" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "${DEFCONFIG_PATH}"
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> "${DEFCONFIG_PATH}"
@@ -341,17 +328,28 @@ jobs:
            
            echo "Ccache statistics after build:"
            ccache -s
-      - name: Make AnyKernel3 (Patch Image)
+      - name: Make AnyKernel3 (Patch Image) # ADDED DEBUGGING FOR IMAGE
         run: |
          set -e
          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.11-beta/patch_linux
          chmod +x patch_linux
+         echo "DEBUG: Files in dist before patch_linux:"
+         ls -la
          ./patch_linux
-         rm -f Image
-         mv oImage Image
+         echo "DEBUG: Files in dist after patch_linux:"
+         ls -la
+         if [ -f "oImage" ]; then
+           rm -f Image 
+           mv oImage Image
+           echo "DEBUG: oImage moved to Image. Files in dist now:"
+           ls -la
+         else
+           echo "DEBUG: oImage not found. Assuming patch_linux modified Image in-place or did not create oImage."
+           ls -la # Show files again
+         fi
          
-      - name: Prepare AnyKernel3 Zip
+      - name: Prepare AnyKernel3 Zip # ADDED DEBUGGING FOR IMAGE
         run: |
          set -e
          cd $GITHUB_WORKSPACE 
@@ -359,7 +357,15 @@ jobs:
          rm -rf ./AnyKernel3_Package/.git
          rm -rf ./AnyKernel3_Package/push.sh
          
-         cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+         echo "DEBUG: Checking for Image in $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before copying to AnyKernel3_Package:"
+         ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+         if [ -f "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image" ]; then
+           cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image ./AnyKernel3_Package/
+           echo "Image copied to AnyKernel3_Package."
+         else
+           echo "ERROR: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image not found for AnyKernel3 packaging!"
+           exit 1
+         fi
          
          cd AnyKernel3_Package
          zip -r9 ../SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip .
@@ -370,9 +376,15 @@ jobs:
          name: SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}_AnyKernel3_Zip
          path: SukiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}.zip
          
+      - name: List dist directory before Raw Image Upload # NEW DEBUG STEP
+        run: |
+          echo "DEBUG: Listing contents of $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/ before uploading Raw Image:"
+          ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/
+      
       - name: Upload Raw Image
         if: success() 
         uses: actions/upload-artifact@v4
         with:
          name: Raw_Image_SuKiSu_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}
          path: $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/dist/Image
+         
