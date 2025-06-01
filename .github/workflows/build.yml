@@ -354,7 +354,6 @@ jobs:
 
           # Function to configure ECN
           configure_ecn() {
-            # Handle tcp_ecn and tcp_ecn_fallback
             sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 2;/' tcp_ipv4.c || {
               echo "Error: Failed to modify sysctl_tcp_ecn"
               return 1
@@ -444,7 +443,73 @@ jobs:
           ls -t | grep -E 'tcp_|sysctl_' || echo "Warning: No matching files found"
 
           echo "Network optimizations applied successfully"
-          
+
+      - name: "⚙️Configure AnyKernel3 to Apply Network Settings"
+        run: |
+          ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
+          ANYKERNEL_SCRIPT="${ANYKERNEL_DIR}/anykernel.sh"
+
+          # Check if anykernel.sh exists
+          if [ ! -f "$ANYKERNEL_SCRIPT" ]; then
+            echo "Error: $ANYKERNEL_SCRIPT not found"
+            exit 1
+          fi
+
+          # Backup anykernel.sh
+          cp "$ANYKERNEL_SCRIPT" "$ANYKERNEL_SCRIPT.bak"
+
+          # Add commands to apply sysctl and ethtool settings
+          cat << 'EOF' >> "$ANYKERNEL_SCRIPT"
+
+          # Apply network configurations
+          ui_print "- Applying network configurations"
+          # Copy sysctl.conf to system
+          write_boot
+          import_cmdline sysctl
+          if [ -f /tmp/anykernel/sysctl.conf ]; then
+          $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
+            mkdir_p /system/etc/sysctl.d
+            cp /tmp/anykernel/sysctl.conf /system/etc/sysctl.d/99-network.conf
+            chmod 644 /system/etc/sysctl.d/99-network.conf
+            # Apply sysctl settings
+            if command -v sysctl >/dev/null 2>&1; then
+              sysctl -p /system/etc/sysctl.d/99-network.conf >/dev/null 2>&1 && ui_print "  Sysctl settings applied" || ui_print "  Warning: Failed to apply sysctl settings"
+            else
+              ui_print "  Warning: sysctl binary not found, settings will apply on boot"
+            fi
+          else
+            ui_print "  Error: sysctl.conf not found in ZIP"
+          fi
+
+          # Apply ethtool settings
+          INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print $2}' | cut -d':' -f1 | head -n1)
+          if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
+            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings"
+            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings"
+            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
+          else
+            ui_print "  Warning: ethtool or network interface not found, skipping interface tuning"
+          fi
+
+          # Create startup script for persistent ethtool settings
+          mkdir_p /data/adb/service.d
+          cat << EOT > /data/adb/service.d/network_tune.sh
+          #!/system/bin/sh
+          # Wait for network interface
+          sleep 5
+          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
+          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
+            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
+            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
+            ethtool -K "\$INTERFACE" gro on
+          fi
+          EOT
+          chmod 755 /data/adb/service.d/network_tune.sh
+          ui_print "  Created startup script for persistent network settings"
+          EOF
+
+          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
+
       - name: "🐂Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
