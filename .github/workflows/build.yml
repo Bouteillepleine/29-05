@@ -361,6 +361,10 @@ jobs:
           echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
           echo "net.ipv4.tcp_mtu_probing = 1" >> /etc/sysctl.conf
           echo "net.ipv4.tcp_low_latency = 1" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_early_retrans = 3 >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_thin_linear_timeouts = 1 >> /etc/sysctl.conf
+          echo "net.core.netdev_max_backlog = 5000 >> /etc/sysctl.conf
+          
           ls -t | grep -E 'tcp_|sysctl_' || {
             echo "Warning: No matching files found"
           }
