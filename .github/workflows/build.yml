@@ -246,43 +246,43 @@ jobs:
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: "😋Disable blacklisted modules"
+      - name: "😋Disable Blacklisted Modules"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Disabling blacklisted modules in gki_defconfig and Kconfig files..."
           cd "$CONFIG/kernel_platform"
-          
-          echo "Cleaning gki_defconfig of blacklisted modules..."
-          sed -i '/CONFIG_EXT4_INODE_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_F_FS_IPC_LOG=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_HUNG_TASK_ENH=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_IIO_TEST_FORMAT=/d' ./common/arch/arm64/configs/gki_defconfig          
-          sed -i '/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_OPLUS_LOCK_TORTURE=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_SOC_TOPOLOGY_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_SOC_UTILS_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
-          
-          echo "Disabling blacklisted modules in gki_defconfig..."
-          echo "CONFIG_EXT4_INODE_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_F_FS_IPC_LOG=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_HUNG_TASK_ENH=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IIO_TEST_FORMAT=n" >> ./common/arch/arm64/configs/gki_defconfig          
-          echo "CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_OPLUS_LOCK_TORTURE=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SOC_TOPOLOGY_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SOC_UTILS_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: "🎶Patch Kconfig to Disable Blacklisted Modules"
-        run: |
-          echo "Patching Kconfig files to disable blacklisted modules..."
-          cd "$CONFIG/kernel_platform"
-          find . -name Kconfig -exec sed -i 's/CONFIG_EXT4_INODE_TEST=[ym]/CONFIG_EXT4_INODE_TEST=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_F_FS_IPC_LOG=[ym]/CONFIG_F_FS_IPC_LOG=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_HUNG_TASK_ENH=[ym]/CONFIG_HUNG_TASK_ENH=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_IIO_TEST_FORMAT=[ym]/CONFIG_IIO_TEST_FORMAT=n/' {} \; || true        
-          find . -name Kconfig -exec sed -i 's/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=[ym]/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_OPLUS_LOCK_TORTURE=[ym]/CONFIG_OPLUS_LOCK_TORTURE=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_SOC_TOPOLOGY_TEST=[ym]/CONFIG_SOC_TOPOLOGY_TEST=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_SOC_UTILS_TEST=[ym]/CONFIG_SOC_UTILS_TEST=n/' {} \; || true
+          # Define blacklisted modules
+          MODULES=(
+            "CONFIG_EXT4_INODE_TEST"
+            "CONFIG_F_FS_IPC_LOG"
+            "CONFIG_HUNG_TASK_ENH"
+            "CONFIG_IIO_TEST_FORMAT"
+            "CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS"
+            "CONFIG_OPLUS_LOCK_TORTURE"
+            "CONFIG_SOC_TOPOLOGY_TEST"
+            "CONFIG_SOC_UTILS_TEST"
+          )
+
+          # Update gki_defconfig: Remove existing entries and set to n
+          DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
+          for MODULE in "${MODULES[@]}"; do
+            sed -i "/${MODULE}=/d" "$DEFCONFIG"
+            echo "${MODULE}=n" >> "$DEFCONFIG"
+          done
+
+          # Patch Kconfig files: Replace y/m with n
+          find . -name Kconfig -exec sed -i \
+            -e 's/CONFIG_EXT4_INODE_TEST=[ym]/CONFIG_EXT4_INODE_TEST=n/' \
+            -e 's/CONFIG_F_FS_IPC_LOG=[ym]/CONFIG_F_FS_IPC_LOG=n/' \
+            -e 's/CONFIG_HUNG_TASK_ENH=[ym]/CONFIG_HUNG_TASK_ENH=n/' \
+            -e 's/CONFIG_IIO_TEST_FORMAT=[ym]/CONFIG_IIO_TEST_FORMAT=n/' \
+            -e 's/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=[ym]/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=n/' \
+            -e 's/CONFIG_OPLUS_LOCK_TORTURE=[ym]/CONFIG_OPLUS_LOCK_TORTURE=n/' \
+            -e 's/CONFIG_SOC_TOPOLOGY_TEST=[ym]/CONFIG_SOC_TOPOLOGY_TEST=n/' \
+            -e 's/CONFIG_SOC_UTILS_TEST=[ym]/CONFIG_SOC_UTILS_TEST=n/' \
+            {} \; || true
+
+          echo "Blacklisted modules disabled successfully"
                 
       - name: "🎶Disable Debug stuffs"
         run: |
@@ -292,19 +292,7 @@ jobs:
           echo "CONFIG_DEBUG_KERNEL=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_DYNAMIC_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEBUG_INFO=n" >> ./common/arch/arm64/configs/gki_defconfig
-
-      - name: "🔍Debug Directory Structure"
-        if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
-        run: |
-          echo "Listing directory structure for $CONFIG/kernel_platform..."
-          ls -R "$CONFIG/kernel_platform" || echo "Directory $CONFIG/kernel_platform not found"
-          if [ -d "$CONFIG/kernel_platform/common/net/ipv4" ]; then
-            echo "Contents of $CONFIG/kernel_platform/common/net/ipv4:"
-            ls "$CONFIG/kernel_platform/common/net/ipv4"
-          else
-            echo "Directory $CONFIG/kernel_platform/common/net/ipv4 does not exist"
-          fi
+          echo "CONFIG_DEBUG_INFO=n" >> ./common/arch/arm64/configs/gki_defconfig      
 
       - name: "💫Optimize Network Performance"
         if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
