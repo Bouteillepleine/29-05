@@ -363,7 +363,7 @@ jobs:
             echo "#!/system/bin/sh" > "$NETWORK_SCRIPT"
             echo "# Apply network settings" >> "$NETWORK_SCRIPT"
             
-            # Append sysctl settings using sed
+            # Append sysctl settings using sed (excluding tcp_congestion_control)
             sed -i '$a\
           if command -v sysctl >/dev/null 2>&1; then\
             sysctl -w net.ipv4.tcp_rmem="4096 87380 6291456"\
@@ -377,7 +377,6 @@ jobs:
             sysctl -w net.ipv4.tcp_early_retrans=3\
             sysctl -w net.ipv4.tcp_thin_linear_timeouts=1\
             sysctl -w net.core.netdev_max_backlog=5000\
-            sysctl -w net.ipv4.tcp_congestion_control='"$( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )"'\
           fi' "$NETWORK_SCRIPT"
 
             # Append ethtool settings using sed
