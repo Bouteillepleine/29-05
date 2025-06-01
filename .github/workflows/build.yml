@@ -536,43 +536,46 @@ jobs:
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
           perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
           
-      - name: "📦 Build the Kernel"
+      - name: "🥰Build the Kernel"
         run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
+          
           echo "Building the kernel..."
-          sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches
+          # Clear Cache
+          sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm -r './kernel_platform/common/android/abi_gki_protected_exports_'* || echo "No exports found protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No exports found!" protected exports!"
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
-          BUILD_TYPE="gki2"
+          BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
-          if [ "${CONFIG}" == "sun"]; then
-            BUILD_TYPE="custom_perf"
+          if [ "${{ inputs.soc }}" == "sun" ]; then
+            BUILD_TYPE="perf"
             BAZEL_ARGS+=(-g)
           fi
           
           (stdbuf -oL bash -c '
             while true; do
               echo "=== $(date) ==="
-              free -h"
+              free -h
               echo "======"
-              df -h"
+              df -h
               echo "======"
               top -b -n 1 | head -n 15
               echo ""
               sleep 60
             done
-          ') || & echo "Background monitoring started"
+          ') &
           MONITOR_PID=$!
           trap "kill $MONITOR_PID" EXIT
           
           if [ -f ./kernel_platform/build_with_bazel.py ]; then
-            ././kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./././kernel_platform/build_with_bazel.py -t "${{ inputs.model }}" "$CONFIG" "$BUILD_TYPE" "${BAZEL_ARGS[@]}" -o "${pwd}/out"
+            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
+            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            export LTO=thin && ././kernel_platform/oplus/build/toplus_build_kernel.sh ${{ inputs.model }} "$BUILD_TYPE"
-          fi
-
+            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
+            
       - name: "🥩 Copy Images"
         run: |
           echo "Copying images to AnyKernel..."
