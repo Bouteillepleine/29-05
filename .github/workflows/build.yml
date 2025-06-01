@@ -92,7 +92,7 @@ jobs:
           
           git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/TheWildJames/kernel_patches.git
+          git clone https://github.com/TheWildJames/kernel_patches.git          
 
       - name: "⭐Initialize and Sync Kernel Source"
         run: |
@@ -136,8 +136,6 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ inputs.ksun_branch }}
           fi
           
-          # Initialize KernelSU-Next as a git submodule
-          git submodule add -b ${{ inputs.ksun_branch }} https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next || echo "Submodule already exists"
           git submodule update --init --recursive
 
       - name: "⭐Apply SUSFS Patches"
@@ -195,20 +193,7 @@ jobs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
           cp ../../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch
-          
-      - name: "⭐Add Manager Patch"
-        run: |
-          set -x
-          cd "$CONFIG/kernel_platform/KernelSU-Next"
-          PATCH_FILE="manager.patch"
-          if [ ! -f "../../../kernel_patches/next/$PATCH_FILE" ]; then
-            echo "Error: $PATCH_FILE not found in kernel_patches/next/"
-            exit 1
-          fi
-          cp "../../../kernel_patches/next/$PATCH_FILE" ./ || { echo "Error: Failed to copy $PATCH_FILE"; exit 1; }
-          echo "Applying $PATCH_FILE..."
-          patch -p1 --fuzz=3 --verbose < "./$PATCH_FILE" > manager.log 2>&1 || { cat manager.log; echo "Warning: Patch application failed or already applied, continuing..."; }
+          patch -p1 -F 3 < 69_hide_stuff.patch          
 
       - name: "😋Add KernelSU-Next and SUSFS Configuration Settings"
         run: |
@@ -221,24 +206,24 @@ jobs:
           echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
           
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_SUSFS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUSFS=y" >> ./common/arch/arm64/configs/gki_configs/gki_defconfig"
-          echo "CONFIG_KSU_SUSFS_AUTO_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_AUTO_SUSFS=y" >> ./common/arch/arm64/configs/gki_da_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_tmpfs_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
       - name: "😋Add BBR Support"
         run: |
@@ -252,6 +237,8 @@ jobs:
           echo "CONFIG_TCP_CONG_CDG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_DEFAULT_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_NET_SCH_DEFAULT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_DEFAULT_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_NET_SCH_SFQ=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -262,7 +249,7 @@ jobs:
           echo "CONFIG_IP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IPV6_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_FASTOPEN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_FASTOPEN=y" >> ./common/arch/arm64/configs/gki_defconfig          
           
       - name: "😋Add TTL Target Support"
         run: |
@@ -469,7 +456,7 @@ jobs:
           write_boot
           import_cmdline sysctl
           if [ -f /tmp/anykernel/sysctl.conf ]; then
-            $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
+          $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
             mkdir_p /system/etc/sysctl.d
             cp /tmp/anykernel/sysctl.conf /system/etc/sysctl.d/99-network.conf
             chmod 644 /system/etc/sysctl.d/99-network.conf
@@ -488,7 +475,7 @@ jobs:
           if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
             ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings"
             ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings"
-            ethtool -K "$INTERFACE" env on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
+            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
           else
             ui_print "  Warning: ethtool or network interface not found, skipping interface tuning"
           fi
@@ -512,7 +499,7 @@ jobs:
 
           echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
 
-      - name: "🐺Integrate Sched Ext"
+      - name: "🐂Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
           cd "$CONFIG/kernel_platform"           
@@ -521,7 +508,7 @@ jobs:
           rm -rf ./sched_ext/.git
           cd common/kernel/sched    
 
-      - name: "🐺Convert HMBIRD_OGKI to HMBIRD_GKI"
+      - name: "🐂Convert HMBIRD_OGKI to HMBIRD_GKI"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
           cd "$CONFIG/kernel_platform/common"
@@ -531,21 +518,7 @@ jobs:
           patch -p1 -F 3 < hmbird_patch.patch
           echo "OGKI to GKI Patch Completed"          
 
-      - name: "🐺Fix Kernel Module Outs for Build"
-        run: |
-          echo "Updating BUILD.bazel to include tcp_bic.ko and tcp_westwood.ko..."
-          BUILD_FILE="$CONFIG/kernel_platform/common/BUILD.bazel"
-          if [ ! -f "$BUILD_FILE" ]; then
-            echo "Error: $BUILD_FILE not found"
-            exit 1
-          fi
-          # Backup BUILD.bazel
-          cp "$BUILD_FILE" "$BUILD_FILE.bak"
-          # Add tcp_bic.ko and tcp_westwood.ko to module_outs
-          sed -i '/module_outs = \[/a\    "net/ipv4/tcp_bic.ko",\n    "net/ipv4/tcp_westwood.ko",' "$BUILD_FILE"
-          echo "Updated $BUILD_FILE to include missing kernel modules"
-
-      - name: "🐺Run sed and perl Commands"
+      - name: "🐂Run sed and perl Commands"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform"
@@ -556,7 +529,7 @@ jobs:
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
           
-          sed -i 's/check_defconfig//' ./common/build_config.gki
+          sed -i 's/check_defconfig//' ./common/build.config.gki
           sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion
@@ -628,7 +601,7 @@ jobs:
             # cp ./out/dist/vendor_boot.img ../AnyKernel3/
           fi
 
-      - name: "🐺Create ZIP Files for Different Formats"
+      - name: "🐂Create ZIP Files for Different Formats"
         run: |
           echo "Navigating to AnyKernel3 directory..."
           cd ./AnyKernel3
