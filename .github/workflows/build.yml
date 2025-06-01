@@ -102,26 +102,7 @@ jobs:
     
           echo "Initializing and syncing kernel source..."
           $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m ${{ inputs.manifest }} --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags || {
-            echo "Repo init failed"
-            exit 1
-          }
-          wget https://github.com/reigadegr/Action-Build/raw/gki_official/fengchi.patch
-          $REPO --version
-          $REPO --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast || {
-            echo "Repo sync failed"
-            exit 1
-          }
-          # Apply fengchi patch if needed
-          if [ -f "fengchi.patch" ]; then
-            echo "Applying fengchi patch..."
-            cd kernel_platform/common
-            patch -p1 < ../../fengchi.patch || {
-              echo "Failed to apply fengchi patch"
-              exit 1
-            }
-            echo "Fengchi patch applied successfully"
-            cd ../..
-          fi
+            echo "Repo init failed"            
       
       - name: "⭐Add KernelSU Next"
         run: |
@@ -487,27 +468,8 @@ jobs:
           ui_print "  Created startup script for persistent network settings"
           EOF
 
-          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
-
-      - name: "🐂 Integrate Sched Ext"
-        if: ${{ inputs.kernel_version == '6.6' }}
-        run: |
-          cd "$CONFIG/kernel_platform"
-          git clone https://github.com/HanKuCha/sched_ext.git
-          cp -r ./sched_ext/* ./common/kernel/sched
-          rm -rf ./sched_ext/.git
-          cd ./common/kernel/sched      
-          
-      - name: "🐂🐫 Convert HMBIRD_OGKI to HMBird_GKI"
-        if: ${{ inputs.kernel_version == '6.6' }}
-        run: |
-          cd "$CONFIG/kernel_platform/common"
-          sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
-          wget https://github.com/Numbersf/Action-Build/raw/main/patches/hmbird_patch.patch
-          echo "Applying OGKI to GKI Patch"
-          patch -p1 -F 3 < hmbird_patch.patch
-          echo "OGKI to GKI Patch completed successfully"
-
+          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"              
+      
       - name: "🐂Run sed and perl Commands"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -530,7 +492,7 @@ jobs:
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
           sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
-          sed -i 's/export\s*REPACK_IMGS=true/export REPACK_IMGS=false/g' ./oplus/build/oplus_setup.sh
+          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
           
           DATESTR=$(date -u)
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
@@ -542,10 +504,11 @@ jobs:
           cd "$CONFIG"
           
           echo "Building the kernel..."
+          # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm -rf ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm -rf ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
@@ -571,11 +534,11 @@ jobs:
           
           if [ -f ./kernel_platform/build_with_bazel.py ]; then
             ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ inputs.model }} "$CONFIG" "$BUILD_TYPE" "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            export LTO=thin && ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.model }} "$BUILD_TYPE"
+            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
           fi
-
+          
       - name: "🥩 Copy Images"
         run: |
           echo "Copying images to AnyKernel..."
@@ -583,7 +546,7 @@ jobs:
           
           echo "Copying Kernel Image..."
           cp ./out/dist/Image ../AnyKernel3/Image
-          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13r" ]; then
+          if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
             cp ./out/dist/dtbo.img ../AnyKernel3/
             cp ./out/dist/system_dlkm.erofs.img ../AnyKernel3/system_dlkm.img
             # cp ./out/dist/vendor_dlkm.img ../AnyKernel3/
