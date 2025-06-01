@@ -312,7 +312,7 @@ jobs:
           # Define variables
           KERNEL_DIR="${CONFIG}/kernel_platform/common/net/ipv4"
           ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
-          SYSCTL_CONF="${ANYKERNEL_DIR}/sysctl.conf"
+          NETWORK_SCRIPT="${ANYKERNEL_DIR}/network_tune.sh"
           NETWORK_TYPE="${NETWORK_TYPE:-lan}"
 
           # Validate directory
@@ -321,10 +321,6 @@ jobs:
             exit 1
           fi
           cd "$KERNEL_DIR" || exit 1
-
-          # Backup files
-          cp tcp_ipv4.c tcp_ipv4.c.bak 2>/dev/null || echo "Warning: Failed to backup tcp_ipv4.c"
-          cp sysctl_net_ipv4.c sysctl_net_ipv4.c.bak 2>/dev/null || echo "Warning: Failed to backup sysctl_net_ipv4.c"
 
           # Function to configure ECN
           configure_ecn() {
@@ -357,53 +353,50 @@ jobs:
             grep "sysctl_tcp_pacing" tcp_ipv4.c
           }
 
-          # Function to configure sysctl settings (saved to AnyKernel3)
-          configure_sysctl() {
+          # Function to configure network settings (saved to AnyKernel3 as service.d script)
+          configure_network_script() {
             mkdir -p "$ANYKERNEL_DIR" || {
               echo "Error: Failed to create $ANYKERNEL_DIR"
               exit 1
             }
-            cat << EOF > "$SYSCTL_CONF"
-          net.ipv4.tcp_rmem = 4096 87380 6291456
-          net.ipv4.tcp_wmem = 4096 16384 4194304
-          net.core.rmem_max = 6291456
-          net.core.wmem_max = 4194304
-          net.ipv4.tcp_window_scaling = 1
-          net.ipv4.tcp_fastopen = 3
-          net.ipv4.tcp_mtu_probing = 1
-          net.ipv4.tcp_low_latency = 1
-          net.ipv4.tcp_early_retrans = 3
-          net.ipv4.tcp_thin_linear_timeouts = 1
-          net.core.netdev_max_backlog = 5000
-          net.ipv4.tcp_congestion_control = $( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )
+            cat << EOF > "$NETWORK_SCRIPT"
+          #!/system/bin/sh
+          # Apply network settings
+          if command -v sysctl >/dev/null 2>&1; then
+            sysctl -w net.ipv4.tcp_rmem="4096 87380 6291456"
+            sysctl -w net.ipv4.tcp_wmem="4096 16384 4194304"
+            sysctl -w net.core.rmem_max=6291456
+            sysctl -w net.core.wmem_max=4194304
+            sysctl -w net.ipv4.tcp_window_scaling=1
+            sysctl -w net.ipv4.tcp_fastopen=3
+            sysctl -w net.ipv4.tcp_mtu_probing=1
+            sysctl -w net.ipv4.tcp_low_latency=1
+            sysctl -w net.ipv4.tcp_early_retrans=3
+            sysctl -w net.ipv4.tcp_thin_linear_timeouts=1
+            sysctl -w net.core.netdev_max_backlog=5000
+            sysctl -w net.ipv4.tcp_congestion_control=$( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )
+          fi
+          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
+          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
+            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
+            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
+            ethtool -K "\$INTERFACE" gro on
+          fi
           EOF
-            echo "Sysctl settings saved to $SYSCTL_CONF"
-          }
-
-          # Function to configure network interface (for documentation, applied on target device)
-          configure_interface() {
-            cat << EOF >> "$SYSCTL_CONF"
-          # Apply on target device with:
-          # ethtool -C <interface> rx-usecs 100 rx-frames 25
-          # ethtool -C <interface> tx-usecs 100 tx-frames 25
-          # ethtool -K <interface> gro on
-          # Benchmark on target device with:
-          # iperf3 -c <server_ip> -t 10 -P 4
-          EOF
-            echo "Interface tuning instructions added to $SYSCTL_CONF"
+            chmod 755 "$NETWORK_SCRIPT"
+            echo "Network settings script saved to $NETWORK_SCRIPT"
           }
 
           # Verify function existence
-          if ! declare -f configure_interface > /dev/null; then
-            echo "Error: configure_interface function not defined"
+          if ! declare -f configure_network_script > /dev/null; then
+            echo "Error: configure_network_script function not defined"
             exit 1
           fi
 
           # Execute configurations
           configure_ecn || { echo "Error: ECN configuration failed"; exit 1; }
           configure_pacing || { echo "Error: Pacing configuration failed"; exit 1; }
-          configure_sysctl || { echo "Error: Sysctl configuration failed"; exit 1; }
-          configure_interface || { echo "Error: Interface configuration failed"; exit 1; }
+          configure_network_script || { echo "Error: Network script configuration failed"; exit 1; }
 
           # List modified files
           ls -t | grep -E 'tcp_|sysctl_' || echo "Warning: No matching files found"
@@ -424,56 +417,26 @@ jobs:
           # Backup anykernel.sh
           cp "$ANYKERNEL_SCRIPT" "$ANYKERNEL_SCRIPT.bak"
 
-          # Add commands to apply sysctl and ethtool settings
+          # Add commands to apply network settings
           cat << 'EOF' >> "$ANYKERNEL_SCRIPT"
 
           # Apply network configurations
           ui_print "- Applying network configurations"
           write_boot
-          if [ -f "$AKHOME/sysctl.conf" ]; then
-            $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
-            mkdir -p /system/etc/sysctl.d
-            cp "$AKHOME/sysctl.conf" /system/etc/sysctl.d/99-network.conf
-            chmod 644 /system/etc/sysctl.d/99-network.conf
-            if command -v sysctl >/dev/null 2>&1; then
-              sysctl -p /system/etc/sysctl.d/99-network.conf >/dev/null 2>&1 && ui_print "  Sysctl settings applied" || ui_print "  Warning: Failed to apply sysctl settings"
-            else
-              ui_print "  Warning: sysctl binary not found, settings will apply on boot"
-            fi
+          if [ -f "$AKHOME/network_tune.sh" ]; then
+            $BOOTMODE && ui_print "  Copying network_tune.sh to /data/adb/service.d/"
+            mkdir -p /data/adb/service.d
+            cp "$AKHOME/network_tune.sh" /data/adb/service.d/network_tune.sh
+            chmod 755 /data/adb/service.d/network_tune.sh
+            ui_print "  Network settings script installed"
           else
-            ui_print "  Error: sysctl.conf not found in ZIP"
+            ui_print "  Error: network_tune.sh not found in ZIP"
             exit 1
           fi
-
-          # Apply ethtool settings
-          INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print $2}' | cut -d':' -f1 | head -n1)
-          if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings"
-            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings"
-            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
-          else
-            ui_print "  Warning: ethtool or network interface not found, skipping interface tuning"
-          fi
-
-          # Create startup script for persistent ethtool settings
-          mkdir -p /data/adb/service.d
-          cat << EOT > /data/adb/service.d/network_tune.sh
-          #!/system/bin/sh
-          # Wait for network interface
-          sleep 5
-          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
-          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
-            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
-            ethtool -K "\$INTERFACE" gro on
-          fi
-          EOT
-          chmod 755 /data/adb/service.d/network_tune.sh
-          ui_print "  Created startup script for persistent network settings"
           EOF
 
           echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"              
-      
+
       - name: "🐂Run sed and perl Commands"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -492,7 +455,7 @@ jobs:
           sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
           sed -i 's/-dirty//' ./common/scripts/setlocalversion
           sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
-          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
+          sed -i 's/-$dirty//' ./external/dtc/scripts/setlocalversion
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
           sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
@@ -511,8 +474,8 @@ jobs:
           # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/common/android/abi_gki_protected_export_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_export_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
