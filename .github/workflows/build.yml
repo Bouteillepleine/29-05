@@ -501,7 +501,7 @@ jobs:
 
       - name: "🐂 Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
-          run: |
+        run: |
             cd "$CONFIG"/kernel_platform"           
             git clone https://github.com/HanKuCha/sched_ext.git
             cp -r ./sched_ext/* ./common/kernel/sched
@@ -510,7 +510,7 @@ jobs:
 
       - name: "🐂🐫 Convert HMBIRD_OGKI to HMBird_GKI"
         if: ${{ inputs.kernel_version == '6.6' }}
-          run: |
+        run: |
             cd "$CONFIG"/kernel_platform/common"
             sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
             wget https://github.com/Numbersf/Action-Build/raw/main/patches/hmbird_patch.patch
