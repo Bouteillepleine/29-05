@@ -323,14 +323,7 @@ jobs:
       - name: "💫Optimize Network Performance"
         if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
         run: |
-          # Define kernel source path
-          KERNEL_DIR="${CONFIG:-/kernel_platform}/common/net/ipv4"
-          if [ ! -d "$KERNEL_DIR" ]; then
-            echo "Error: Directory $KERNEL_DIR does not exist"
-            exit 1
-          fi
-          cd "$KERNEL_DIR" || exit 1
-          # Modify ECN to be more aggressive
+          cd "$CONFIG/kernel_platform/common/net/ipv4"          
           sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 2;/' tcp_ipv4.c || {
             echo "Error: Failed to modify sysctl_tcp_ecn"
             exit 1
