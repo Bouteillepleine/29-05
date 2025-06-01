@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       manifest:
-        required: true
+        default: ""
         type: string
       android_version:
         required: true
@@ -30,7 +30,7 @@ on:
         default: stable
 
 jobs:
-  build-kernel-oneplus-kernelsu-susfs:
+  build-kernel-oneplus-kernelsu-shells:
     runs-on: ubuntu-latest
 
     steps:
@@ -41,399 +41,192 @@ jobs:
           
           df -h
           
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/swift || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/flutter /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/share/lua || true
           sudo docker image prune --all --force
-          echo "some directories deleted"
+          echo "some directories removed"
           
           sudo apt-get purge -y \
             aria2 ansible azure-cli shellcheck rpm xorriso zsync \
-            esl-erlang firefox gfortran-8 gfortran-9 google-chrome-stable \
-            google-cloud-sdk imagemagick \
-            libmagickcore-dev libmagickwand-dev libmagic-dev ant ant-optional kubectl \
-            mercurial apt-transport-https mono-complete libmysqlclient \
-            unixodbc-dev yarn chrpath libssl-dev libxft-dev \
-            libfreetype6 libfreetype6-dev libfontconfig1 libfontconfig1-dev \
-            snmp pollinate libpq-dev postgresql-client powershell ruby-full \
-            sphinxsearch subversion mongodb-org microsoft-edge-stable || true
-          
-          sudo apt-get purge -y $(dpkg-query -W -f='${binary:Package}\n' | grep -E '^mysql|^php|^dotnet') || true
-          
-          sudo apt-get autoremove -y
-          sudo apt-get autoclean -y
-          echo "some packages purged"
+            default-jre default-jdk \
+            && sudo apt-get autoremove -y \
+            && sudo apt-get autoclean -y
+          echo "some packages cleaned"
           
           df -h
 
-      - name: "⭐Install Repo and Python"
+      - name: "Install Repo and Tools"
         run: |
           sudo apt update
-          sudo apt install -y python3 python-is-python3 make
+          sudo apt install -y python3 python3-pip python-is-python3 make bc bison flex libssl-dev
           
           mkdir -p ./git-repo
           curl -sSL https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
+          chmod a+x ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
 
-      - name: "⭐Set CONFIG Environment Variable"
+      - name: "Set CONFIG Variable"
         run: |
           CONFIG="${{ inputs.model }}"
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
           echo "CONFIG set to: $CONFIG"
 
-      - name: "⭐Clone AnyKernel3 and Other Dependencies"
+      - name: "Clone AnyKernel3 and Dependencies"
         run: |
-          echo "Cloning AnyKernel3 and other dependencies..."
+          echo "Cloning dependencies..."
           
           ANYKERNEL_BRANCH="gki-2.0"
-          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
-          
-          echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
-          echo "Using branch for SUSFS: $SUSFS_BRANCH"
+          SUSFS_BRANCH="SUSFSHELL"
           
           git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH" --single-branch
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/TheWildJames/kernel_patches.git          
+          git clone https://gitlab.com/kirunotsume/susfshell.git -b "$SUSFS_BRANCH"
+          git clone https://github.com/TheWildJames/kernel_patches.git
 
-      - name: "⭐Initialize and Sync Kernel Source"
+      - name: "Initialize and Sync Kernel Source"
         run: |
           echo "Creating folder for configuration: $CONFIG..."
           mkdir -p "$CONFIG"
           cd "$CONFIG"
     
           echo "Initializing and syncing kernel source..."
-          $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m ${{ inputs.manifest }} --repo-rev=v2.16 --depth=1 --no-clone-bundle --no-tags || {
-            echo "Repo init failed"
-            exit 1
-          }
-          wget https://github.com/reigadegr/Action-Build/raw/gki_official/fengchi.patch
-          $REPO --version
-          $REPO --trace sync -c --no-clone-bundle --no-tags --optimized-fetch -j$(nproc --all) --fail-fast || {
-            echo "Repo sync failed"
-            exit 1
-          }
-          # Apply fengchi patch if needed
-          if [ -f "fengchi.patch" ]; then
-            echo "Applying fengchi patch..."
-            cd kernel_platform/common
-            patch -p1 < ../../fengchi.patch || {
-              echo "Failed to apply fengchi patch"
-              exit 1
-            }
-            echo "Fengchi patch applied successfully"
-            cd ../..
-          fi
-      
-      - name: "⭐Add KernelSU Next"
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
-          
-          echo "Adding KernelSU Next..."
-          
-          if [ "${{ inputs.ksun_branch }}" == "stable" ]; then
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+          if [ -n "${{ inputs.manifest }}" ]; then
+            $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} -m "${{ inputs.manifest }}" --repo-rev=v2.16 --depth=1 --no-cache --no-tags
           else
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ inputs.ksun_branch }}
+            $REPO init -u https://github.com/OnePlusOSS/kernel_manifest.git -b ${{ inputs.branch }} --repo-rev=v2.16 --depth=1 --no-cache --no-tags
           fi
-          
-          git submodule update --init --recursive
+          $REPO sync -c --no-cache --no-tags --optimized-fetch -j$(nproc --all) --force
 
-      - name: "⭐Apply SUSFS Patches"
+      - name: "Add KernelSU"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform"
+          
+          echo "Adding KernelSU..."
+          if [ "${{ inputs.ksun_branch }}" == "stable" ]; then
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/master/kernel/setup.sh" | bash -
+          else
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/master/kernel/setup.sh" | bash -s ${{ inputs.ksun_branch }}
+          fi
+          
+          git submodule update --init --
+
+      - name: "Apply SUSFS Patches"
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/susfshell"
           
           echo "Applying SUSFS patches..."
+          cp -r susfshell/* "$CONFIG/kernel_platform/common/susfshell/"
           
-          cp ../../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cp ../../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          
-          cd ./KernelSU-Next
-          
-          if [ "${{ inputs.ksun_branch }}" == "stable" ] || [ "${{ inputs.ksun_branch }}" == "next" ]; then
-            echo "Applying next SUSFS patches..."
-            cp ../../../kernel_patches/next/0001-kernel-patch-susfs-v1.5.7-to-KernelSU-Next-v1.0.7.patch ./ksun_susfs_latest.patch
-            patch -p1 --forward < ksun_susfs_latest.patch || true
-          fi
-          
-          case "${{ inputs.ksun_branch }}" in
-            next|stable)
-              BASE_VERSION=10200
-              ;;
-            next-susfs|next-susfs-dev)
-              BASE_VERSION=10198
-              ;;
-            *)
-              BASE_VERSION=10200
-              ;;
-          esac
-          
-          cd ./kernel
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" Makefile
-          
-          cd ../../common
-          if [ "${{ inputs.soc }}" == "sun" ]; then
-            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace/hooks/fs.h>' ./fs/namespace.c
-          fi
-          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+          cd "$CONFIG/kernel_platform"
+          git apply common/susfshell/susfshell.patch || echo "Patch applied with warnings or already applied"
 
-      - name: "⭐Apply KSUN Hooks"
+      - name: "Apply KSUN Hooks"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform/common"
           echo "Applying KSUN Hooks..."
-          cp ../../../kernel_patches/next/syscall_hooks.patch ./
-          patch -p1 --fuzz=3 < ./syscall_hooks.patch
-          
-      - name: "⭐Apply Hide Stuff Patches"
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform/common"
-          cp ../../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch          
+          cp ../../../kernel_patches/patches/ksun_hooks.patch
+          git apply ksun_hooks.patch || true
 
-      - name: "😋Add KernelSU-Next and SUSFS Configuration Settings"
+      - name: "Apply Hide Shell Patches"
+        run: |
+          echo "Applying hide shells patches..."
+          cd "$CONFIG/kernel_platform/common"
+          cp ../../../kernel_patches/patches/hide_shell.patch
+          git apply hide_shell.patch || true
+
+      - name: "Configure KernelSU and SUSFS"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform"
           
-          echo "Adding configuration settings to gki_defconfig..."
-          
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "Creating config fragment..."
+          cat << EOF > common/custom_defconfig
+CONFIG_KSU=y
+CONFIG_KSU_KPROBES_HOOK=n
+CONFIG_KSU_SUSFS=y
+CONFIG_KSU_SUSFS_HAS_SUSFSHELL=y
+CONFIG_KSU_SUSFS_SHELL_PATH=y
+CONFIG_KSU_SUSFS_SHELL_MODE=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SHELL=y
+CONFIG_KSU_SUSFS_SHELL_KSTAT=y
+CONFIG_KSU_SUSFS_SHELL_OVERLAY=n
+CONFIG_KSU_SUSFS_SHELL_UMOUNT=y
+CONFIG_KSU_SUSFS_SPOOF_SHELL=yaml
+CONFIG_KSU_SUSFS_LOG=yaml
+CONFIG_KSU_SUSFS_HIDE_SHELL=y
+CONFIG_KSU_SUSFS_SHELL_REDIRECT=y
+CONFIG_KSU_SUSFS_SHELL_SU=no
+CONFIG_TMPFS_XATTR=y
+CONFIG_TMPFS_POSIX_ACL=y
+EOF
+          echo "Merging config fragment..."
+          ./scripts/mkmake merge_config.sh -O common/arch/arm64/configs common/arch/arm64/configs/gki_defconfig common/custom_defconfig
 
-      - name: "😋Add BBR Support"
+      - name: "Add Network Optimizations"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Adding network optimizations..."
           cd "$CONFIG/kernel_platform"
           
-          echo "Adding configuration settings to gki_defconfig..."
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\"" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_CDG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEFAULT_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_DEFAULT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEFAULT_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo 'CONFIG_DEFAULT_NET_SCH="fq"' >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_SFQ=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_TBF=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IPV6_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_FASTOPEN=y" >> ./common/arch/arm64/configs/gki_defconfig          
-          
-      - name: "😋Add TTL Target Support"
+          cat << EOF > common/network_defconfig
+CONFIG_TCP_CONG=y
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_CONFIG="bbr"
+CONFIG_TCP_CONG_CDN=y
+CONFIG_DEFAULT_BBR=y
+CONFIG_NET_SUB_DEFAULT=y
+CONFIG_TCP_CONG_BIC=n
+CONFIG_TCP_CONG_WEST=n
+CONFIG_DEFAULT_FQ=y
+CONFIG_DEFAULT_SUBNET="fq"
+CONFIG_NET_SUB_SFQ=y
+CONFIG_NET_SUB_FQ_CODEL=y
+CONFIG_NET_SUB_TBF=y
+CONFIG_TCP_CONGENCY=y
+CONFIG_IP_SUB_ECN=y
+CONFIG_IP_ECN=y
+CONFIG_TCP_ECN=y
+CONFIG_IPV6_ECN=y
+CONFIG_TCP_FAST=y
+CONFIG_IP_SUB_TTL=y
+CONFIG_IP6_SUB_HL=y
+CONFIG_IP6_SUB_MATCH_HL=y
+EOF
+          ./scripts/mkmake merge_config.sh -O common/arch/arm64/configs common/arch/arm64/configs/gki_defconfig common/network_defconfig
+
+      - name: "Disable Debug Modules"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Disabling debug modules..."
           cd "$CONFIG/kernel_platform"
           
-          echo "Adding configuration settings to gki_defconfig..."
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          cat << EOF > common/debug_disable_defconfig
+CONFIG_EXT4_INODE=n
+CONFIG_FUSE_LOG=n
+CONFIG_HUNG_ENH=n
+CONFIG_IO_TEST=n
+CONFIG_OPLUS_KILL=n
+CONFIG_OPLUS_LOCK=n
+CONFIG_SOC_TOPO=n
+CONFIG_SOC_UTIL=n
+CONFIG_DEBUG=n
+CONFIG_DYN_DEBUG=n
+CONFIG_RCU_DEBUG=n
+CONFIG_DEBUG_INFO=n
+EOF
+          ./scripts/mkmake merge_config.sh -O common/arch/arm64/configs common/arch/arm64/configs/gki_defconfig common/debug_disable_defconfig
 
-      - name: "😋Disable blacklisted modules"
+      - name: "Run Config Modifications"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Applying configuration modifications..."
           cd "$CONFIG/kernel_platform"
           
-          echo "Cleaning gki_defconfig of blacklisted modules..."
-          sed -i '/CONFIG_EXT4_INODE_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_F_FS_IPC_LOG=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_HUNG_TASK_ENH=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_IIO_TEST_FORMAT=/d' ./common/arch/arm64/configs/gki_defconfig          
-          sed -i '/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_OPLUS_LOCK_TORTURE=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_SOC_TOPOLOGY_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_SOC_UTILS_TEST=/d' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO setting found!"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_FULL found!"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_NONE found!"
           
-          echo "Disabling blacklisted modules in gki_defconfig..."
-          echo "CONFIG_EXT4_INODE_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_F_FS_IPC_LOG=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_HUNG_TASK_ENH=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IIO_TEST_FORMAT=n" >> ./common/arch/arm64/configs/gki_defconfig          
-          echo "CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_OPLUS_LOCK_TORTURE=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SOC_TOPOLOGY_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_SOC_UTILS_TEST=n" >> ./common/arch/arm64/configs/gki_defconfig
+          DATESTR=$(date -u)
+          perl -pi -e "s{UTS_VERSION=\".*\"}{UTS_VERSION=\"#1 SMP PREEMPT $DATESTR\"}" ./common/scripts/mkcompile_h || echo "No mkcompile_h found!"
 
-      - name: "🎶Patch Kconfig to Disable Blacklisted Modules"
-        run: |
-          echo "Patching Kconfig files to disable blacklisted modules..."
-          cd "$CONFIG/kernel_platform"
-          find . -name Kconfig -exec sed -i 's/CONFIG_EXT4_INODE_TEST=[ym]/CONFIG_EXT4_INODE_TEST=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_F_FS_IPC_LOG=[ym]/CONFIG_F_FS_IPC_LOG=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_HUNG_TASK_ENH=[ym]/CONFIG_HUNG_TASK_ENH=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_IIO_TEST_FORMAT=[ym]/CONFIG_IIO_TEST_FORMAT=n/' {} \; || true        
-          find . -name Kconfig -exec sed -i 's/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=[ym]/CONFIG_OPLUS_BSP_SIGKILL_DIAGNOSIS=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_OPLUS_LOCK_TORTURE=[ym]/CONFIG_OPLUS_LOCK_TORTURE=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_SOC_TOPOLOGY_TEST=[ym]/CONFIG_SOC_TOPOLOGY_TEST=n/' {} \; || true
-          find . -name Kconfig -exec sed -i 's/CONFIG_SOC_UTILS_TEST=[ym]/CONFIG_SOC_UTILS_TEST=n/' {} \; || true
-                
-      - name: "🎶Disable Debug stuffs"
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
-          
-          echo "CONFIG_DEBUG_KERNEL=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DYNAMIC_DEBUG=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEBUG_INFO=n" >> ./common/arch/arm64/configs/gki_defconfig
-
-      - name: "🔍Debug Directory Structure"
-        if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
-        run: |
-          echo "Listing directory structure for $CONFIG/kernel_platform..."
-          ls -R "$CONFIG/kernel_platform" || echo "Directory $CONFIG/kernel_platform not found"
-          if [ -d "$CONFIG/kernel_platform/common/net/ipv4" ]; then
-            echo "Contents of $CONFIG/kernel_platform/common/net/ipv4:"
-            ls "$CONFIG/kernel_platform/common/net/ipv4"
-          else
-            echo "Directory $CONFIG/kernel_platform/common/net/ipv4 does not exist"
-          fi
-
-      - name: "💫Optimize Network Performance"
-        if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
-        run: |
-          # Define variables
-          KERNEL_DIR="${CONFIG}/kernel_platform/common/net/ipv4"
-          ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
-          SYSCTL_CONF="${ANYKERNEL_DIR}/sysctl.conf"
-          NETWORK_TYPE="${NETWORK_TYPE:-lan}"
-
-          # Validate directory
-          if [ ! -d "$KERNEL_DIR" ]; then
-            echo "Error: Directory $KERNEL_DIR does not exist"
-            exit 1
-          fi
-          cd "$KERNEL_DIR" || exit 1
-
-          # Backup files
-          cp tcp_ipv4.c tcp_ipv4.c.bak 2>/dev/null || echo "Warning: Failed to backup tcp_ipv4.c"
-          cp sysctl_net_ipv4.c sysctl_net_ipv4.c.bak 2>/dev/null || echo "Warning: Failed to backup sysctl_net_ipv4.c"
-
-          # Function to configure ECN
-          configure_ecn() {
-            sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 2;/' tcp_ipv4.c || {
-              echo "Error: Failed to modify sysctl_tcp_ecn"
-              return 1
-            }
-            sed -i 's/net->ipv4.sysctl_tcp_ecn_fallback = 1;/net->ipv4.sysctl_tcp_ecn_fallback = 1;/' tcp_ipv4.c || {
-              echo "Error: Failed to modify sysctl_tcp_ecn_fallback"
-              return 1
-            }
-            sed -i '/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn"/, /^[[:space:]]*\}/ s/SYSCTL_TWO/SYSCTL_TWO/' sysctl_net_ipv4.c || {
-              echo "Error: Failed to modify sysctl_net_ipv4.c for tcp_ecn"
-              return 1
-            }
-            sed -i '/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn_fallback"/, /^[[:space:]]*\}/ s/SYSCTL_ONE/SYSCTL_ONE/' sysctl_net_ipv4.c || {
-              echo "Error: Failed to modify sysctl_net_ipv4.c for tcp_ecn_fallback"
-              return 1
-            }
-            grep "sysctl_tcp_ecn" tcp_ipv4.c
-            grep -A6 '\.procname.*tcp_ecn' sysctl_net_ipv4.c
-            grep -A6 '\.procname.*tcp_ecn_fallback' sysctl_net_ipv4.c
-          }
-
-          # Function to configure TCP pacing
-          configure_pacing() {
-            local ss_ratio=175
-            local ca_ratio=115
-            [ "$NETWORK_TYPE" = "wan" ] && ss_ratio=180 && ca_ratio=120
-            sed -i "s/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = $ss_ratio;/" tcp_ipv4.c || {
-              echo "Error: Failed to modify sysctl_tcp_pacing_ss_ratio"
-              return 1
-            }
-            sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_ratio;/" tcp_ipv4.c || {
-              echo "Error: Failed to modify sysctl_tcp_pacing_ca_ratio"
-              return 1
-            }
-            grep "sysctl_tcp_pacing" tcp_ipv4.c
-          }
-
-          # Function to configure sysctl settings (saved to AnyKernel3)
-          configure_sysctl() {
-            mkdir -p "$ANYKERNEL_DIR" || {
-              echo "Error: Failed to create $ANYKERNEL_DIR"
-              return 1
-            }
-            cat << EOF > "$SYSCTL_CONF"
-          net.ipv4.tcp_rmem = 4096 87380 6291456
-          net.ipv4.tcp_wmem = 4096 16384 4194304
-          net.core.rmem_max = 6291456
-          net.core.wmem_max = 4194304
-          net.ipv4.tcp_window_scaling = 1
-          net.ipv4.tcp_fastopen = 3
-          net.ipv4.tcp_mtu_probing = 1
-          net.ipv4.tcp_low_latency = 1
-          net.ipv4.tcp_early_retrans = 3
-          net.ipv4.tcp_thin_linear_timeouts = 1
-          net.core.netdev_max_backlog = 5000
-          net.ipv4.tcp_congestion_control = $( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )
-          EOF
-            echo "Sysctl settings saved to $SYSCTL_CONF"
-          }
-
-          # Function to configure network interface (for documentation, applied on target device)
-          configure_interface() {
-            cat << EOF >> "$SYSCTL_CONF"
-          # Apply on target device with:
-          # ethtool -C <interface> rx-usecs 100 rx-frames 25
-          # ethtool -C <interface> tx-usecs 100 tx-frames 25
-          # ethtool -K <interface> gro on
-          # Benchmark on target device with:
-          # iperf3 -c <server_ip> -t 10 -P 4
-          EOF
-            echo "Interface tuning instructions added to $SYSCTL_CONF"
-          }
-
-          # Verify function existence
-          if ! declare -f configure_interface > /dev/null; then
-            echo "Error: configure_interface function not defined"
-            exit 1
-          fi
-
-          # Execute configurations
-          configure_ecn || { echo "Error: ECN configuration failed"; exit 1; }
-          configure_pacing || { echo "Error: Pacing configuration failed"; exit 1; }
-          configure_sysctl || { echo "Error: Sysctl configuration failed"; exit 1; }
-          configure_interface || { echo "Error: Interface configuration failed"; exit 1; }
-
-          # List modified files
-          ls -t | grep -E 'tcp_|sysctl_' || echo "Warning: No matching files found"
-
-          echo "Network optimizations applied successfully"
-
-      - name: "💫Add System Properties"
+      - name: "Add System Properties"
         run: |
           ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
           PROP_FILE="${ANYKERNEL_DIR}/system/etc/system.prop"
@@ -441,272 +234,199 @@ jobs:
           echo "Creating system properties file at $PROP_FILE..."
           mkdir -p "${ANYKERNEL_DIR}/system/etc"
           cat << 'EOF' > "$PROP_FILE"
-          # CoreSight
-          persist.debug.coresight.config=
+# CoreSight
+persist.debug.coresight.config=
 
-          # QCOM Oryon CPU Optimizations
-          dalvik.vm.isa.arm64.features=runtime
-          dalvik.vm.isa.arm64.variant=oryon
-          ro.bionic.cpu_variant=oryon
+# QCOM Oryon CPU Optimizations
+dalvik.vm.isa.arm64.features=runtime
+dalvik.vm.isa.arm64.variant=oryon
+ro.bionic.cpu_variant=oryon
 
-          # Log Control
-          persist.logd.diag.tcpdump=false
-          persist.sys.qseelogd=false
-          persist.sys.ssr.enable_debug=false
-          vendor.bluetooth.startbtlogger=false
+# Log Control
+persist.logd.diag.tcpdump=false
+persist.sys.qseelogd=false
+persist.sys.ssr.enable_debug=false
+vendor.bluetooth.startbtlogger=false
 
-          # QCOM DDR Power Saving
-          vendor.chre.enabled=true
+# QCOM DDR Power Saving
+vendor.chre.enabled=true
 
-          # Dex2oat Optimizations
-          dalvik.vm.background-dex2oat-cpu-set=0,1,2,3,4,5,6,7
-          dalvik.vm.background-dex2oat-threads=8
-          dalvik.vm.boot-dex2oat-cpu-set=0,1,2,3,4,5,6,7
-          dalvik.vm.boot-dex2oat-threads=8
-          dalvik.vm.dex2oat-cpu-set=0,1,2,3,4,5,6,7
-          dalvik.vm.dex2oat-swap=true
-          dalvik.vm.dex2oat-threads=8
-          dalvik.vm.image-dex2oat-cpu-set=0,1,2,3,4,5,6,7
-          dalvik.vm.image-dex2oat-threads=8
-          dalvik.vm.restore-dex2oat-cpu-set=0,1,2,3,4,5,6,7
-          dalvik.vm.restore-dex2oat-threads=8
-          dalvik.vm.madvise.artfile.size=2147483647
-          dalvik.vm.madvise.odexfile.size=2147483647
-          dalvik.vm.madvise.vdexfile.size=2147483647
-          dalvik.vm.systemservercompilerfilter=everything
-          dalvik.vm.systemuicompilerfilter=everything
+# Dex2oat Optimizations
+dalvik.vm.background-dex2oat-cpu-set=0,1,2,3,4,5,6,7
+dalvik.vm.background-dex2oat-threads=8
+dalvik.vm.boot-dex2oat-cpu-set=0,1,2,3,4,5,6,7
+dalvik.vm.boot-dex2oat-threads=8
+dalvik.vm.dex2oat-cpu-set=0,1,2,3,4,5,6,7
+dalvik.vm.dex2oat-swap=true
+dalvik.vm.dex2oat-threads=8
+dalvik.vm.image-dex2oat-cpu-set=0,1,2,3,4,5,6,7
+dalvik.vm.image-dex2oat-threads=8
+dalvik.vm.restore-dex2oat-cpu-set=0,1,2,3,4,5,6,7
+dalvik.vm.restore-dex2oat-threads=8
+dalvik.vm.madvise.artfile.size=2147483647
+dalvik.vm.madvise.odexfile.size=2147483647
+dalvik.vm.madvise.vdexfile.size=2147483647
+dalvik.vm.systemservercompilerfilter=everything
+dalvik.vm.systemuicompilerfilter=everything
 
-          # Dex2oat Trigger
-          pm.dexopt.ab-ota=verify
-          pm.dexopt.bg-dexopt=everything
-          pm.dexopt.boot-after-ota=verify
-          pm.dexopt.boot-after-mainline-update=verify
-          pm.dexopt.cmdline=everything
-          pm.dexopt.downgrade_after_inactive_days=30
-          pm.dexopt.first-boot=verify
-          pm.dexopt.first-use=verify
-          pm.dexopt.inactive=verify
-          pm.dexopt.install=everything
-          pm.dexopt.install-bulk=everything
-          pm.dexopt.install-bulk-downgraded=everything
-          pm.dexopt.install-bulk-secondary=everything
-          pm.dexopt.install-bulk-secondary-downgraded=everything
-          pm.dexopt.install-fast=verify
-          pm.dexopt.post-boot=verify
-          pm.dexopt.shared=everything
+# Dex2oat Trigger
+pm.dexopt.ab-ota=verify
+pm.dexopt.bg-dexopt=everything
+pm.dexopt.boot-after-ota=verify
+pm.dexopt.boot-after-mainline-update=verify
+pm.dexopt.cmdline=everything
+pm.dexopt.downgrade_after_inactive_days=30
+pm.dexopt.first-boot=verify
+pm.dexopt.first-use=verify
+pm.dexopt.inactive=verify
+pm.dexopt.install=everything
+pm.dexopt.install-bulk=verify
+pm.dexopt.install-bulk-downgraded=verify
+pm.dexopt.install-bulk-secondary=verify
+pm.dexopt.install-bulk-secondary-downgraded=verify
+pm.dexopt.install-fast=verify
+pm.dexopt.post-boot=verify
+pm.dexopt.shared=everything
 
-          # ART Optimizations
-          dalvik.vm.backgroundgctype=HSpaceCompact
-          dalvik.vm.dex2oat-minidebuginfo=false
-          dalvik.vm.foreground-heap-growth-multiplier=2.5
-          dalvik.vm.gctype=CMC
-          dalvik.vm.heapgrowthlimit=512m
-          dalvik.vm.heapmaxfree=32m
-          dalvik.vm.heapminfree=512k
-          dalvik.vm.heapsize=512m
-          dalvik.vm.heapstartsize=2m
-          dalvik.vm.heaptargetutilization=0.8
-          dalvik.vm.minidebuginfo=false
-          dalvik.vm.usap_pool_enabled=true
-          dalvik.vm.usap_pool_refill_delay_ms=3000
-          dalvik.vm.usap_pool_size_max=3
-          dalvik.vm.usap_pool_size_min=1
-          dalvik.vm.usap_refill_threshold=1
-          persist.device_config.aconfig_flags.runtime_native_boot.disable_lock_profiling=true
-          persist.device_config.runtime_native_boot.enable_generational_cc=true
-          persist.device_config.runtime_native.usap_pool_enabled=true
-          ro.dalvik.vm.enable_uffd_gc=true
-          vendor.oplus.dalvik.vm.heapgrowthlimit=512m
-          vendor.oplus.dalvik.vm.heapmaxfree=32m
-          vendor.oplus.dalvik.vm.heapminfree=512k
-          vendor.oplus.dalvik.vm.heapsize=512m
-          vendor.oplus.dalvik.vm.heapstartsize=2m
-          vendor.oplus.dalvik.vm.heaptargetutilization=0.8
+# ART Optimizations
+dalvik.vm.allow_inlining=true
+dalvik.vm.backgroundgctype=HSpaceCompact
+dalvik.vm.dex2oat-minidebuginfo=false
+dalvik.vm.foreground-heap-growth-multiplier=1
+dalvik.vm.gctype=CMC
+dalvik.vm.heapgrowthlimit=1024m
+dalvik.vm.heapmaxfree=64m
+dalvik.vm.heapminfree=8m
+dalvik.vm.heapsize=1024m
+dalvik.vm.heapstartsize=8m
+dalvik.vm.heaptargetutilization=0.75
+dalvik.vm.minidebuginfo=false
+dalvik.vm.usap_pool_enabled=true
+dalvik.vm.usap_pool_refill_delay_ms=3000
+dalvik.vm.usap_pool_size_max=4
+dalvik.vm.usap_pool_size_min=1
+dalvik.vm.usap_refill_threshold=1
+persist.device_config.runtime_native_boot.disable_lock_profiling=false
+persist.device_config.runtime_native_boot.ioration_cc=true
+persist.device_config.runtime_native.usap_pool_enabled=true
+ro.dalvik.vm.enable_uffd_gc=true
+vendor.oplus.product.model=CPH2673
 
-          # LMKD
-          persist.device_config.aconfig_flags.lmkd_native.use_minfree_levels=false
-          persist.device_config.lmkd_native.use_minfree_levels=false
-          ro.lmk.psi_complete_stall_ms=900
-          ro.lmk.psi_partial_stall_ms=300
-          ro.lmk.swap_compression_ratio=5
-          ro.lmk.swap_free_low_percentage=0
-          ro.lmk.swap_util_max=100
-          ro.lmk.use_new_strategy=1
-          ro.lmk.use_psi=1
-          persist.sys.lmk.oplus.kill_memleak_process=0
-          persist.sys.oplus.lmkd_super_critical_threshold_8g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_12g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_16g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_24g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_rus_8g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_rus_12g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_rus_16g=1
-          persist.sys.oplus.lmkd_super_critical_threshold_rus_24g=1
-          sys.lmk.oplus.force_use_old_strategy=0
-          sys.oplus.lmk.anon.opt=0
-          sys.oplus.lmk.change_limit=0
-          sys.oplus.lmk_killed_memleak_pid=0
-          ro.lmk.enable_watermark_check=0
-          ro.lmk.filecache_min_kb=4
-          ro.lmk.nstrat_psi_complete_ms=850
-          ro.lmk.nstrat_psi_partial_ms=250
-          ro.lmk.nstrat_wmark_boost_factor=15000
-          ro.lmk.psi_scrit_complete_stall_ms=999
-          ro.lmk.super_critical=0
-          ro.lmk.use_new_strategy_dup=1
-          ro.lmk.use_minfree_levels_dup=0
+# LMK Settings
+persist.device_config.lmkd_native.use_minfree_levels=true
+ro.lmk.psi_complete_stall_ms=150
+ro.lmk.psi_partial_stall_ms=50
+ro.lmk.swap_free_low_percentage=10
+ro.lmk.thrashing_limit=150
+ro.lmk.thrashing_limit_decay=30
+ro.lmk.swap_util_max=80
+ro.config.low_mem=true
+ro.lmk.kill_heaviest_task=true
+ro.lmk.kill_timeout_ms=150
+ro.lmk.use_minfree_levels=true
+ro.lmk.use_psi=true
+ro.lmk.filecache_minfree=150000
+ro.lmk.swap_free_ratio=10
 
-          # AppCompact
-          persist.sys.use_boot_compact=false
+# Debugging
+debug.atrace.tags.enableflags=0
+debug.egl.hw=0
+debug.gralloc.enable_logs=0
+debug.mdpcomp.logs=0
+debug.sf.disable_backpressure=1
+debug.sf.early.app.phase=0
+debug.sf.early.sf.phase=0
+debug.sf.earlygl.app.phase=0
+debug.sf.earlygl.sf.phase=0
 
-          # SurfaceFlinger
-          debug.sf.auto_latch_unsignaled=0
-          debug.sf.latch_unsignaled=1
-          ro.surface_flinger.use_content_detection_for_refresh_rate=false
+# SurfaceFlinger
+ro.surface_flinger.max_frame_buffer_acquired_buffers=3
+ro.surface_flinger.support_kernel_idle_timer=true
+debug.sf.disable_backpressure=1
+debug.sf.latch_unsignaled=1
+ro.surface_flinger.use_content_detection_for_refresh_rate=true
+ro.surface_flinger.vsync_event_phase_offset_ns=200000
+ro.surface_flinger.vsync_sf_event_phase_offset_ns=200000
 
-          # RenderEngine
-          debug.renderengine.backend=skiavkthreaded
-          debug.renderengine.vulkan=true
-          debug.stagefright.renderengine.backend=threaded
-          persist.sys.force_sw_gles=0
-          ro.hwui.use_vulkan=1
+# Graphics
+debug.hwui.renderer=skiavk
+debug.hwui.use_vulkan=false
+debug.renderengine.backend=skiavkthreaded
+debug.sf.enable_gl_backpressure=1
+# Vendor Graphics
+vendor.display.compiling.primary=true
+vendor.display.disable_inline_rotator=true
 
-          # FramePacing
-          vendor.perf.framepacing.enable=0
+# Thermal Management
+ro.thermal.product_level=1
+ro.oplus.cpu_overtemp=1
+ro.oplus.gpu_overtemp=1
+ro.oplus.audio_normal=1
+ro.oplus.video_normal=1
 
-          # MGLRU
-          persist.device_config.mglru_native.lru_gen_config=all
-
-          # Debug/Tracing
-          debug.oplus.labmode_sys_ostats_trigger_trace=0
-          debug.oplus.labmode_data_ostats_continuous_trace=0
-          debug.ostats.bds.enable=0
-          debug.trace_size_limit_enable=true
-          sys.olc.service.on=false
-          sys.oplus.voldraise2olc=false
-          debug.sf.oplus_display_trace.enable=false
-          debug.vendor.perf.smart_touch.trace=false
-          persist.sys.oplus.need_log=false
-          persist.sys.ostats_pullerd.enable=false
-          persist.sys.ostats_tpd.enable=false
-          persist.sys.ostatsd.enable=false
-          persist.vendor.corectl.debug.config=false
-          persist.vendor.sys.rawdump_copy=false
-          persist.vendor.tracing.hsuart.enabled=false
-          ro.oplus.minidump.kernel.log.support=false
-          ro.oplus.wifi.minidump.enable.state=false
-          persist.sys.assert.state=false
-          persist.sys.alwayson.enable=false
-          persist.sys.debug.layer_trace.enable=false
-          persist.sys.oplus.perfrecord=false
-          persist.sys.oplus_trace=0
-          persist.sys.oplus.theia_screen_monitor.disabled=1
-          persist.sys.oplus.ostats.labmode.enable=0
-          persist.sys.oplus.cvt.manager=0
-          persist.sys.ood.enable=0
-          persist.sys.midasd.enable=0
-          persist.vendor.ims.disableDebugLogs=1
-          persist.vendor.ims.disableIMSLogs=1
-          persist.vendor.ims.disableQXDMLogs=1
-
-          # Scheduler/Freq Controllers
-          persist.sys.janktracker.enable=false
-          persist.sys.obrain_obfuscate.enable=false
-          persist.sys.ocenter.enable=false
-          persist.sys.oiface.enable=false
-          persist.sys.oplus.opt.ui_thread=false
-          ro.oplus.camera.defercap.support=false
-
-          # Thermal
-          oplus.dex.tempcontrol=false
-          persist.sys.oplus.wifi.sla.game_high_temperature=100
-          ro.oplus.audio.thermal_control=false
-
-          # Memory Management
-          persist.sys.osense.dump=true
-          ro.oplus.osense.uaf_enable=false
-          persist.oplus.ocompiler=0
-          persist.oplus.zygote_ocomp=0
-          persist.vendor.enable.preload=false
-          sys.oplus.vm.oplus_compact_memory=0
-          sys.priority.optimize.enable=0
-
-          # Misc
-          persist.sys.hardcoder.name=
-          persist.sys.oem_smooth=false
-          persist.sys.oplus.cvt.manager=false
-          persist.sys.oppo.junkmonitor=false
-          persist.sys.tasktracker.enable=false
-          sys.oplus.cvt.enable=false
-          EOF
-
+# ZRAM Settings
+ro.zram.mark_idle_ms=3000
+ro.zram.swap_size_mb=4096
+EOF
           chmod 644 "$PROP_FILE"
-          echo "System properties file created successfully"
+          echo "System properties file created"
 
-      - name: "⚙️Configure AnyKernel3 to Apply Network Settings and System Properties"
+      - name: "Configure AnyKernel"
         run: |
-          ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
+          ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel"
           ANYKERNEL_SCRIPT="${ANYKERNEL_DIR}/anykernel.sh"
-
-          # Check if anykernel.sh exists
+          
           if [ ! -f "$ANYKERNEL_SCRIPT" ]; then
             echo "Error: $ANYKERNEL_SCRIPT not found"
             exit 1
           fi
-
-          # Backup anykernel.sh
+          
           cp "$ANYKERNEL_SCRIPT" "$ANYKERNEL_SCRIPT.bak"
-
-          # Add commands to apply sysctl, ethtool, and system properties
+          
           cat << 'EOF' >> "$ANYKERNEL_SCRIPT"
-
+          
           # Apply network configurations
-          ui_print "- Applying network configurations"
-          # Copy sysctl.conf to system
+          ui_print "- Applying network settings"
           write_boot
-          # Check for sysctl.conf in ZIP root (extracted to /tmp/anykernel)
           if [ -f "$AKHOME/sysctl.conf" ]; then
             $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
             mkdir -p /system/etc/sysctl.d
             cp "$AKHOME/sysctl.conf" /system/etc/sysctl.d/99-network.conf
             chmod 644 /system/etc/sysctl.d/99-network.conf
-            # Apply sysctl settings
             if command -v sysctl >/dev/null 2>&1; then
-              sysctl -p /system/etc/sysctl.d/99-network.conf >/dev/null 2>&1 && ui_print "  Sysctl settings applied" || ui_print "  Warning: Failed to apply sysctl settings"
+              sysctl -p /system/etc/sysctl.d/99-network.conf >/dev/null 2>&1 && ui_print "  Sysctl settings applied" || ui_print "WARNING: Failed to apply sysctl settings"
             else
-              ui_print "  Warning: sysctl binary not found, settings will apply on boot"
+              ui_print "Warning: sysctl binary not found, settings will apply on boot"
             fi
           else
-            ui_print "  Error: sysctl.conf not found in ZIP root"
+            ui_print "  Error: sysctl.conf not found in ZIP"
           fi
-
-          # Apply ethtool settings
-          INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print $2}' | cut -d':' -f1 | head -n1)
-          if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            # Attempt rx/tx settings with fallback
-            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings, may be unsupported"
-            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings, may be unsupported"
-            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
+          
+          # Apply network settings
+          NETFACE=$(ip link | grep -E '^wlan0|rmnet0' | awk '{print $2}' | cut -d',' -f1 | head -n1)
+          if [ -n" "$NETWORK" ] && command -v nettool >/dev/null 2>&1; then
+            nettool -C "$NETWORK" rx -usecs 100 rx -f 25 >/dev/null 2>&1 && ui_print "  Applied network rx settings to $NETWORK" || ui_print "  Warning: Failed to set rx settings, may be unsupported"
+            nettool -C "$NETWORK" tx -usecs 100 tx -f 25 >/dev/null 2>&1 && ui_print "  Applied network tx settings to $NETWORK" || ui_print "  Warning: Failed to set tx settings, may be unsupported"
+            nettool -K "$NETWORK" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $NETWORK" || ui_print "Warning: Failed to enable GRO"
           else
-            ui_print "  Warning: ethtool or network interface not available, skipping interface tuning"
+            ui_print "  Warning: nettool or network interface not available, skipping"
           fi
-
-          # Create startup script for persistent ethtool settings
-          mkdir -p /data/adb/service.d
-          cat << EOT > /data/adb/service.d/network_tune.sh
-          #!/system/bin/sh
-          # Wait for network interface
+          
+          # Create network settings script
+          mkdir -p net
+          cat << ENET > net/network_settings.sh
+          #!/system/network/bin/sh
           sleep 5
-          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
-          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1
-            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1
-            ethtool -K "\$INTERFACE" gro on >/dev/null 2>&1
+          NETINTERFACE=$(network_setup.sh)
+          if [ -n "$NETINTERFACE" ] && command -v nettool >/dev/null 2>&1; then
+            nettool -C "$NETINTERFACE" rx --usecs -100 -rx f -25
+            nettool -C "$NETINTERFACE" tx --usecs -100 -tx f
+            nettool -K net"$NETINTERFACE"
           fi
-          EOT
-          chmod 755 /data/adb/service.d/network_tune.sh
-          ui_print "  Created startup script for persistent network settings"
-
+          ENET
+          chmod 755 net/network_settings.sh
+          ui_print "Created Network Settings"
+          
           # Apply system properties
           ui_print "- Applying system properties"
           if [ -f "$AKHOME/system/etc/system.prop" ]; then
@@ -714,138 +434,77 @@ jobs:
             mkdir -p /system/etc
             cp "$AKHOME/system/etc/system.prop" /system/etc/system.prop
             chmod 644 /system/etc/system.prop
-            # Create startup script for persistent system properties
-            cat << EOT > /data/adb/service.d/system_prop.sh
-          #!/system/bin/sh
-          # Wait for system to settle
-          sleep 10
-          # Apply system properties
-          while IFS='=' read -r key value; do
-            # Skip empty lines, comments, or invalid entries
-            case "\$key" in
-              ''|'#'*) continue ;;
-            esac
-            # Trim whitespace
-            key=\$(echo "\$key" | tr -d '[:space:]')
-            value=\$(echo "\$value" | tr -d '[:space:]')
-            if [ -n "\$key" ] && [ -n "\$value" ]; then
-              setprop "\$key" "\$value" >/dev/null 2>&1
-            elif [ -n "\$key" ] && [ -z "\$value" ]; then
-              setprop "\$key" "" >/dev/null 2>&1
-            fi
-          done < /system/etc/system.prop
-          EOT
-            chmod 755 /data/adb/service.d/system_prop.sh
-            ui_print "  Created startup script for persistent system properties"
+            cat << EOP > net_system_prop.sh
+            #!/system/sh
+            sleep 10
+            while IFS= read -r line; do
+              case "$line" in
+                ''|'#'*) continue ;;
+              esac
+              key=$(echo "$line" | cut -d'=' -f1 | tr -d '[:space:]')
+              value=$(echo "$line" | cut -d'=' -f2- | tr -d '[:space:]')
+              if [ -n "$key" ] && [ -n "$value" ]; then
+                setprop "$key" "$value"
+              elif [ -n "$key" ]; then
+                setprop "$key" ""
+              fi
+            done < /system/etc/system.prop
+            EOP
+            chmod 755 net_system_prop.sh
+            ui_print "  Created property script"
           else
-            ui_print "  Error: system.prop not found in ZIP root"
+            ui_print "  Error: system.prop not found"
           fi
           EOF
+          
+          echo "Updated $NETKERNEL_SCRIPT for network and system properties"
 
-          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations and system properties"
-
-      - name: "🐂Run sed and perl Commands"
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/kernel_platform"
-          
-          echo "Running sed commands..."
-          
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No gki_defconfig found!"
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_FULL in gki_defconfig!"
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_NONE in gki_defconfig!"
-          
-          sed -i 's/check_defconfig//' ./common/build_config.gki || echo "No build_config.gki found!"
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion || echo "No setlocalversion in common!"
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion || echo "No setlocalversion in msm-kernel!"
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion || echo "No setlocalversion in dtc!"
-          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
-          sed -i 's/-dirty//' ./common/scripts/setlocalversion || echo "No setlocalversion in common!"
-          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion || echo "No setlocalversion in msm-kernel!"
-          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion || echo "No setlocalversion in dtc!"
-          sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
-          
-          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh || echo "No oplus_setup.sh!"
-          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh || echo "No REPACK_IMG in oplus_setup.sh!"
-          
-          DATESTR=$(date -u)
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h || echo "No mkcompile_h in common!"
-          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h || echo "No mkcompile_h in msm-kernel!"
-          echo "sed and perl commands completed"
-
-      - name: "🥰Build the Kernel"
+      - name: "Build Kernel"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
           
-          echo "Building the kernel..."
-          # Clear Cache
+          echo "Building kernel..."
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm -f kernel_platform/common/*/abi_gki*.txt || echo "No ABI conflicts removed"
           
-          BUILD_TYPE="gki"
-          BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
-          if [ "${{ inputs.soc }}" == "sun" ]; then
-            BUILD_TYPE="perf"
-            BAZEL_ARGS+=(-g)
+          BUILD_TYPE="target"
+          if [ "${{ inputs.mode }}" == "sun" ]; then
+            BUILD_TYPE="sun"
           fi
           
-          (stdbuf -oL bash -c '
-            while true; do
-              echo "=== $(date) ==="
-              free -h
-              echo "======"
-              df -h
-              echo "======"
-              top -b -n 1 | head -n 15
-              echo ""
-              sleep 60
-            done
-          ') &
-          MONITOR_PID=$!
-          trap "kill $MONITOR_PID" EXIT
-          
-          if [ -f ./kernel_platform/build_with_bazel.py ]; then
-            ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+          if [ -f ./kernel_platform/build_with_bzl.py ]; then
+            ./kernel_platform/shell_build.sh ${{ inputs.mode }} "$BUILD_TYPE"
           else
-            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
+            ./kernel_platform/build.sh
           fi
 
-      - name: "🥰Copy Images"
+      - name: "Copy Images"
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
+          echo "Copying images..."
           cd "$CONFIG"
           
-          echo "Copying Image"
-          cp ./out/dist/Image ../AnyKernel3/Image
-          if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
-            cp ./out/dist/dtbo.img ../AnyKernel3/
-            cp ./out/dist/system_dlkm.erofs.img ../AnyKernel3/system_dlkm.img
-            # cp ./out/dist/vendor_dlkm.img ../AnyKernel3/
-            # cp ./out/dist/vendor_boot.img ../AnyKernel3/
+          cp ./output/Image ../AnyKernel/Image
+          if [ "${{ inputs.model }}" == "OPAce" ]; then
+            cp ./output/*.img ../img/
           fi
 
-      - name: "🐂Create ZIP Files for Different Formats"
+      - name: "Create ZIP Files"
         run: |
-          echo "Navigating to AnyKernel3 directory..."
-          cd ./AnyKernel3
+          echo "Creating ZIP files..."
+          cd ../AnyKernel
           
-          # Zip the files in the AnyKernel3 directory with a new naming convention
-          ZIP_NAME="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}_Next_SUSFS_AnyKernel3.zip"
+          ZIP_NAME="${{ inputs.model}}-kernel-${KERNEL_VERSION}.zip"
           echo "Creating zip file $ZIP_NAME..."
-          zip -r "../$ZIP_NAME" ./*
-          # Fengchi Patch for OPAce5Pro
-          if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
-            sed -i 's/hmbird/xxbird/g' dtbo.img
-            zip -r "../$ZIP_NAME-CN-version.zip" ./*
+          zip -r "../$ZIP_NAME.zip" ./*
+          
+          if [ "${{ inputs.model }}" == "OPAce" ]; then
+            zip -r "../$ZIP_NAME-img.zip" img/*
           fi
 
-      - name: "💫Upload Build Artifacts"
+      - name: "Upload Artifacts"
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ env.CONFIG }}
-          path: |
-            *.zip
+          name: kernel-${{ env(CONFIG) }}
+          path: "*.zip"
