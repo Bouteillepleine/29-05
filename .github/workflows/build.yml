@@ -90,7 +90,7 @@ jobs:
           echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
           
-          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH" --single-branch
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/TheWildJames/kernel_patches.git          
 
@@ -454,11 +454,11 @@ jobs:
           ui_print "- Applying network configurations"
           # Copy sysctl.conf to system
           write_boot
-          import_cmdline sysctl
-          if [ -f /tmp/anykernel/sysctl.conf ]; then
-          $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
-            mkdir_p /system/etc/sysctl.d
-            cp /tmp/anykernel/sysctl.conf /system/etc/sysctl.d/99-network.conf
+          # Check for sysctl.conf in ZIP root (extracted to /tmp/anykernel)
+          if [ -f "$AKHOME/sysctl.conf" ]; then
+            $BOOTMODE && ui_print "  Copying sysctl.conf to /system/etc/sysctl.d/"
+            mkdir -p /system/etc/sysctl.d
+            cp "$AKHOME/sysctl.conf" /system/etc/sysctl.d/99-network.conf
             chmod 644 /system/etc/sysctl.d/99-network.conf
             # Apply sysctl settings
             if command -v sysctl >/dev/null 2>&1; then
@@ -467,30 +467,31 @@ jobs:
               ui_print "  Warning: sysctl binary not found, settings will apply on boot"
             fi
           else
-            ui_print "  Error: sysctl.conf not found in ZIP"
+            ui_print "  Error: sysctl.conf not found in ZIP root"
           fi
 
           # Apply ethtool settings
           INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print $2}' | cut -d':' -f1 | head -n1)
           if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings"
-            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings"
+            # Attempt rx/tx settings with fallback
+            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings, may be unsupported"
+            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings, may be unsupported"
             ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
           else
-            ui_print "  Warning: ethtool or network interface not found, skipping interface tuning"
+            ui_print "  Warning: ethtool or network interface not available, skipping interface tuning"
           fi
 
           # Create startup script for persistent ethtool settings
-          mkdir_p /data/adb/service.d
+          mkdir -p /data/adb/service.d
           cat << EOT > /data/adb/service.d/network_tune.sh
           #!/system/bin/sh
           # Wait for network interface
           sleep 5
           INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
           if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
-            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
-            ethtool -K "\$INTERFACE" gro on
+            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1
+            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1
+            ethtool -K "\$INTERFACE" gro on >/dev/null 2>&1
           fi
           EOT
           chmod 755 /data/adb/service.d/network_tune.sh
