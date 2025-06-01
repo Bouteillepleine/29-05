@@ -260,6 +260,7 @@ jobs:
           echo "CONFIG_IP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IPV6_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_FASTOPEN=y" >> ../../arch/arm64/configs/gki_defconfig
 
       - name: "😋Add TTL Target Support"
         run: |
@@ -319,18 +320,51 @@ jobs:
           echo "CONFIG_RCU_TRACE=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_DEBUG_INFO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: ECN
+      - name: "💫Optimize Network Performance"
         if: ${{ inputs.kernel_version == '6.6' || inputs.kernel_version == '6.1' }}
         run: |
-          cd "$CONFIG/kernel_platform/common/net/ipv4"
-          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 1;/' tcp_ipv4.c
+          # Define kernel source path
+          KERNEL_DIR="${CONFIG:-/kernel_platform}/common/net/ipv4"
+          if [ ! -d "$KERNEL_DIR" ]; then
+            echo "Error: Directory $KERNEL_DIR does not exist"
+            exit 1
+          fi
+          cd "$KERNEL_DIR" || exit 1
+          # Modify ECN to be more aggressive
+          sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 2;/' tcp_ipv4.c || {
+            echo "Error: Failed to modify sysctl_tcp_ecn"
+            exit 1
+          }
           grep "sysctl_tcp_ecn" tcp_ipv4.c
-          #sed -i '/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn"/, /^[[:space:]]*\}/ s/SYSCTL_TWO/SYSCTL_ONE/' sysctl_net_ipv4.c
+          # Uncomment and adjust ECN sysctl (align with tcp_ipv4.c change)
+          sed -i '/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn"/, /^[[:space:]]*\}/ s/SYSCTL_TWO/SYSCTL_TWO/' sysctl_net_ipv4.c || {
+            echo "Error: Failed to modify sysctl_net_ipv4.c for tcp_ecn"
+            exit 1
+          }
           grep -A6 '\.procname.*tcp_ecn' sysctl_net_ipv4.c
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 150;/' tcp_ipv4.c
-          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 110;/' tcp_ipv4.c
+          # Adjust TCP pacing ratios (tune based on workload)
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = 175;/' tcp_ipv4.c || {
+            echo "Error: Failed to modify sysctl_tcp_pacing_ss_ratio"
+            exit 1
+          }
+          sed -i 's/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = 115;/' tcp_ipv4.c || {
+            echo "Error: Failed to modify sysctl_tcp_pacing_ca_ratio"
+            exit 1
+          }
           grep "sysctl_tcp_pacing" tcp_ipv4.c
-          ls -t | grep -E 'tcp_|sysctl_'
+          # Adjust TCP buffer sizes (optional, for high-bandwidth networks)
+          echo "net.ipv4.tcp_rmem = 4096 87380 6291456" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_wmem = 4096 16384 4194304" >> /etc/sysctl.conf
+          echo "net.core.rmem_max = 6291456" >> /etc/sysctl.conf
+          echo "net.core.wmem_max = 4194304" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_window_scaling = 1" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_fastopen = 3" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_mtu_probing = 1" >> /etc/sysctl.conf
+          echo "net.ipv4.tcp_low_latency = 1" >> /etc/sysctl.conf
+          ls -t | grep -E 'tcp_|sysctl_' || {
+            echo "Warning: No matching files found"
+          }
+          echo "Network optimizations applied successfully"
 
       - name: "🐂Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
