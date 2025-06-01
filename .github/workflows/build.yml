@@ -359,30 +359,36 @@ jobs:
               echo "Error: Failed to create $ANYKERNEL_DIR"
               exit 1
             }
-            cat << EOF > "$NETWORK_SCRIPT"
-          #!/system/bin/sh
-          # Apply network settings
-          if command -v sysctl >/dev/null 2>&1; then
-            sysctl -w net.ipv4.tcp_rmem="4096 87380 6291456"
-            sysctl -w net.ipv4.tcp_wmem="4096 16384 4194304"
-            sysctl -w net.core.rmem_max=6291456
-            sysctl -w net.core.wmem_max=4194304
-            sysctl -w net.ipv4.tcp_window_scaling=1
-            sysctl -w net.ipv4.tcp_fastopen=3
-            sysctl -w net.ipv4.tcp_mtu_probing=1
-            sysctl -w net.ipv4.tcp_low_latency=1
-            sysctl -w net.ipv4.tcp_early_retrans=3
-            sysctl -w net.ipv4.tcp_thin_linear_timeouts=1
-            sysctl -w net.core.netdev_max_backlog=5000
-            sysctl -w net.ipv4.tcp_congestion_control=$( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )
-          fi
-          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
-          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
-            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
-            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
-            ethtool -K "\$INTERFACE" gro on
-          fi
-          EOF
+            # Create base script with shebang
+            echo "#!/system/bin/sh" > "$NETWORK_SCRIPT"
+            echo "# Apply network settings" >> "$NETWORK_SCRIPT"
+            
+            # Append sysctl settings using sed
+            sed -i '$a\
+          if command -v sysctl >/dev/null 2>&1; then\
+            sysctl -w net.ipv4.tcp_rmem="4096 87380 6291456"\
+            sysctl -w net.ipv4.tcp_wmem="4096 16384 4194304"\
+            sysctl -w net.core.rmem_max=6291456\
+            sysctl -w net.core.wmem_max=4194304\
+            sysctl -w net.ipv4.tcp_window_scaling=1\
+            sysctl -w net.ipv4.tcp_fastopen=3\
+            sysctl -w net.ipv4.tcp_mtu_probing=1\
+            sysctl -w net.ipv4.tcp_low_latency=1\
+            sysctl -w net.ipv4.tcp_early_retrans=3\
+            sysctl -w net.ipv4.tcp_thin_linear_timeouts=1\
+            sysctl -w net.core.netdev_max_backlog=5000\
+            sysctl -w net.ipv4.tcp_congestion_control='"$( [ "$NETWORK_TYPE" = "wan" ] && echo "bbr" || echo "cubic" )"'\
+          fi' "$NETWORK_SCRIPT"
+
+            # Append ethtool settings using sed
+            sed -i '$a\
+          INTERFACE=$(ip link | grep -E '"'"'wlan0|rmnet0'"'"' | awk '"'"'{print \$2}'"'"' | cut -d'"'"':'"'"' -f1 | head -n1)\
+          if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then\
+            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25\
+            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25\
+            ethtool -K "$INTERFACE" gro on\
+          fi' "$NETWORK_SCRIPT"
+
             chmod 755 "$NETWORK_SCRIPT"
             echo "Network settings script saved to $NETWORK_SCRIPT"
           }
@@ -417,25 +423,24 @@ jobs:
           # Backup anykernel.sh
           cp "$ANYKERNEL_SCRIPT" "$ANYKERNEL_SCRIPT.bak"
 
-          # Add commands to apply network settings
-          cat << 'EOF' >> "$ANYKERNEL_SCRIPT"
+          # Append network settings logic using sed
+          sed -i '$a\
+          \
+          # Apply network configurations\
+          ui_print "- Applying network configurations"\
+          write_boot\
+          if [ -f "$AKHOME/network_tune.sh" ]; then\
+            $BOOTMODE && ui_print "  Copying network_tune.sh to /data/adb/service.d/"\
+            mkdir -p /data/adb/service.d\
+            cp "$AKHOME/network_tune.sh" /data/adb/service.d/network_tune.sh\
+            chmod 755 /data/adb/service.d/network_tune.sh\
+            ui_print "  Network settings script installed"\
+          else\
+            ui_print "  Error: network_tune.sh not found in ZIP"\
+            exit 1\
+          fi' "$ANYKERNEL_SCRIPT"
 
-          # Apply network configurations
-          ui_print "- Applying network configurations"
-          write_boot
-          if [ -f "$AKHOME/network_tune.sh" ]; then
-            $BOOTMODE && ui_print "  Copying network_tune.sh to /data/adb/service.d/"
-            mkdir -p /data/adb/service.d
-            cp "$AKHOME/network_tune.sh" /data/adb/service.d/network_tune.sh
-            chmod 755 /data/adb/service.d/network_tune.sh
-            ui_print "  Network settings script installed"
-          else
-            ui_print "  Error: network_tune.sh not found in ZIP"
-            exit 1
-          fi
-          EOF
-
-          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"              
+          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
 
       - name: "🐂Run sed and perl Commands"
         run: |
@@ -455,7 +460,7 @@ jobs:
           sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
           sed -i 's/-dirty//' ./common/scripts/setlocalversion
           sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
-          sed -i 's/-$dirty//' ./external/dtc/scripts/setlocalversion
+          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
           sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
@@ -474,8 +479,8 @@ jobs:
           # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/common/android/abi_gki_protected_export_* || echo "No protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_export_* || echo "No protected exports!"
+          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
