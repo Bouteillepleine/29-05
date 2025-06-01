@@ -249,7 +249,7 @@ jobs:
           echo "CONFIG_IP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IPV6_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_FASTOPEN=y" >> ./common/arch/arm64/configs/gki_defconfig          
+          echo "CONFIG_TCP_FASTOPEN=y" >> ./common/arch/arm64/configs/gki_defconfig
           
       - name: "😋Add TTL Target Support"
         run: |
@@ -488,101 +488,106 @@ jobs:
           EOF
 
           echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
-          
+
       - name: "🐂 Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
-            cd "$CONFIG"/kernel_platform"           
-            git clone https://github.com/HanKuCha/sched_ext.git
-            cp -r ./sched_ext/* ./common/kernel/sched
-            rm -rf ./sched_ext/.git
-            cd .common/kernel/sched
+          cd "$CONFIG/kernel_platform"
+          git clone https://github.com/HanKuCha/sched_ext.git
+          cp -r ./sched_ext/* ./common/kernel/sched
+          rm -rf ./sched_ext/.git
+          cd ./common/kernel/sched
 
       - name: Apply HMBird GKI patch
         if: ${{ inputs.kernel_version == '6.1' }}
         run: |
-         cd "$CONFIG"/kernel_platform/common/drivers"
-         cat << 'EOF' > hmbird_patch.c
-         #include <linux/init.h>
-         #include <linux/module.h>
-         #include <linux/of.h>
-         #include <linux/slab.h>
-         #include <linux/string.h>
-         static int __init hmbird_patch_init(void)
-         {
-             struct device_node *ver_np;
-             const char *type;
-             int ret;
-             ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
-             if (!ver_np) {
-                  pr_info("hmbird_patch: version_type node not found\n");
-                  return 0;
-             }
-             ret = of_property_read_string(ver_np, "type", &type);
-             if (ret) {
-                  pr_info("hmbird_patch: type property not found\n");
-                  of_node_put(ver_np);
-                  return 0;
-             }
-             if (strcmp(type, "HMBIRD_OGKI")) {
-                  of_node_put(ver_np);
-                  return 0;
-             }
-             struct property *prop = of_find_property(ver_np, "type", NULL);
-             if (prop) {
-                  struct property *new_prop = kmalloc(sizeof(*prop), GFP_KERNEL);
-                  if (!new_prop) {
-                       pr_info("hmbird_patch: kmalloc for new_prop failed\n");
-                       of_node_put(ver_np);
-                       return 0;
-             }
-             memcpy(new_prop, prop, sizeof(*prop));
-             new_prop->value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
-             if (!new_prop->value) {
-                  pr_info("hmbird_patch: kmalloc for new_prop->value failed\n");
-                  kfree(new_prop);
-                  of_node_put(ver_np);
-                  return 0;
-            }
-            strcpy(new_prop->value, "HMBIRD_GKI");
-            new_prop->length = strlen("HMBIRD_GKI") + 1;
-            if (of_remove_property(ver_np, prop) != 0) {
-                 pr_info("hmbird_patch: of_remove_property failed\n");
-                 return 0;
-            }
-            if (of_add_property(ver_np, new_prop) !=0) {
-                 pr_info("hmbird_patch: of_add_property failed\n");
-                 return 0;
-            }
-            pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
-         }
-         else {
-             pr_info("hmbird_patch: type property structure not found\n");
-         }
-         of_node_put(ver_np);
-         return 0;
-         }
-         early_initcall(hmbird_patch_init);
-         MODULE_LICENSE("GPL");
-         MODULE_AUTHOR("reigadegr");
-         MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
-         EOF
-         if ! grep -q "hmbird_patch.o" Makefile; then
-         echo "obj-y += hmbird_patch.o" >> Makefile
-         fi
-         cd ../../../
-         git add -A
-         git commit -m "Add HMBird GKI patch" || true
-
+          cd "$CONFIG/kernel_platform/common/drivers"
+          cat << 'EOF' > hmbird_patch.c
+          #include <linux/init.h>
+          #include <linux/module.h>
+          #include <linux/of.h>
+          #include <linux/slab.h>
+          #include <linux/string.h>
+          static int __init hmbird_patch_init(void)
+          {
+              struct device_node *ver_np;
+              const char *type;
+              int ret;
+              ver_np = of_find_node_by_path("/soc/oplus,hmbird/version_type");
+              if (!ver_np) {
+                   pr_info("hmbird_patch: version_type node not found\n");
+                   return 0;
+              }
+              ret = of_property_read_string(ver_np, "type", &type);
+              if (ret) {
+                   pr_info("hmbird_patch: type property not found\n");
+                   of_node_put(ver_np);
+                   return 0;
+              }
+              if (strcmp(type, "HMBIRD_OGKI")) {
+                   of_node_put(ver_np);
+                   return 0;
+              }
+              struct property *prop = of_find_property(ver_np, "type", NULL);
+              if (prop) {
+                   struct property *new_prop = kmalloc(sizeof(*prop), GFP_KERNEL);
+                   if (!new_prop) {
+                        pr_info("hmbird_patch: kmalloc for new_prop failed\n");
+                        of_node_put(ver_np);
+                        return 0;
+                   }
+                   memcpy(new_prop, prop, sizeof(*prop));
+                   new_prop->value = kmalloc(strlen("HMBIRD_GKI") + 1, GFP_KERNEL);
+                   if (!new_prop->value) {
+                        pr_info("hmbird_patch: kmalloc for new_prop->value failed\n");
+                        kfree(new_prop);
+                        of_node_put(ver_np);
+                        return 0;
+                   }
+                   strcpy(new_prop->value, "HMBIRD_GKI");
+                   new_prop->length = strlen("HMBIRD_GKI") + 1;
+                   if (of_remove_property(ver_np, prop) != 0) {
+                        pr_info("hmbird_patch: of_remove_property failed\n");
+                        kfree(new_prop->value);
+                        kfree(new_prop);
+                        of_node_put(ver_np);
+                        return 0;
+                   }
+                   if (of_add_property(ver_np, new_prop) != 0) {
+                        pr_info("hmbird_patch: of_add_property failed\n");
+                        kfree(new_prop->value);
+                        kfree(new_prop);
+                        of_node_put(ver_np);
+                        return 0;
+                   }
+                   pr_info("hmbird_patch: success from HMBIRD_OGKI to HMBIRD_GKI\n");
+              } else {
+                   pr_info("hmbird_patch: type property structure not found\n");
+              }
+              of_node_put(ver_np);
+              return 0;
+          }
+          early_initcall(hmbird_patch_init);
+          MODULE_LICENSE("GPL");
+          MODULE_AUTHOR("reigadegr");
+          MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
+          EOF
+                    if ! grep -q "hmbird_patch.o" Makefile; then
+                      echo "obj-y += hmbird_patch.o" >> Makefile
+                    fi
+                    cd ../../../
+                    git add -A
+                    git commit -m "Add HMBird GKI patch" || true
+          
       - name: "🐂🐫 Convert HMBIRD_OGKI to HMBird_GKI"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
-            cd "$CONFIG"/kernel_platform/common"
-            sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
-            wget https://github.com/Numbersf/Action-Build/raw/main/patches/hmbird_patch.patch
-            echo "Applying OGKI to GKI Patch to GKI Patch"
-            patch -p1 -F 3 < hmbird_patch.patch
-            echo "  OGKI to GKI Patch completed successfully"          "
+          cd "$CONFIG/kernel_platform/common"
+          sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
+          wget https://github.com/Numbersf/Action-Build/raw/main/patches/hmbird_patch.patch
+          echo "Applying OGKI to GKI Patch"
+          patch -p1 -F 3 < hmbird_patch.patch
+          echo "OGKI to GKI Patch completed successfully"
 
       - name: "🐂Run sed and perl Commands"
         run: |
@@ -606,23 +611,22 @@ jobs:
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
           sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
-          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
+          sed -i 's/export\s*REPACK_IMGS=true/export REPACK_IMGS=false/g' ./oplus/build/oplus_setup.sh
           
           DATESTR=$(date -u)
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
           perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
-          
+
       - name: "🥰Build the Kernel"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
           
           echo "Building the kernel..."
-          # Clear Cache
           sudo sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'
           
-          rm ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm -rf ./kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm -rf ./kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           
           BUILD_TYPE="gki"
           BAZEL_ARGS=(--jobs=$(nproc --all) --lto=thin)
@@ -648,10 +652,11 @@ jobs:
           
           if [ -f ./kernel_platform/build_with_bazel.py ]; then
             ./kernel_platform/oplus/bazel/oplus_modules_variant.sh ${{ inputs.soc }} "$BUILD_TYPE" ""
-            ./kernel_platform/build_with_bazel.py -t ${{ inputs.soc }} $BUILD_TYPE "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
+            ./kernel_platform/build_with_bazel.py -t ${{ inputs.model }} "$CONFIG" "$BUILD_TYPE" "${BAZEL_ARGS[@]}" -o "$(pwd)/out"
           else
-            LTO=thin ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.soc }} "$BUILD_TYPE"
-            
+            export LTO=thin && ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ inputs.model }} "$BUILD_TYPE"
+          fi
+
       - name: "🥩 Copy Images"
         run: |
           echo "Copying images to AnyKernel..."
@@ -659,26 +664,28 @@ jobs:
           
           echo "Copying Kernel Image..."
           cp ./out/dist/Image ../AnyKernel3/Image
-          if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
+          if [ "${{ inputs.model }}" == "OPAce5Pro" ] || [ "${{ inputs.model }}" == "OP13r" ]; then
             cp ./out/dist/dtbo.img ../AnyKernel3/
-            cp ./out/dist/system_dlkm.erofs.img ../AnyKernel3/
+            cp ./out/dist/system_dlkm.erofs.img ../AnyKernel3/system_dlkm.img
             # cp ./out/dist/vendor_dlkm.img ../AnyKernel3/
             # cp ./out/dist/vendor_boot.img ../AnyKernel3/
           fi
 
       - name: "🐍 Create ZIP Files for Different Formats"
         run: |
-          echo "Navigating to .AnyKernel3 directory..."
+          echo "Navigating to AnyKernel3 directory..."
           cd ./AnyKernel3
           
-          # Zip the files in the AnyKernel3 directory with a new naming convention
+          # Create standard ZIP
           ZIP_NAME="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}_Next_SUSFS_AnyKernel3.zip"
-          echo "Creating zip file for $ZIP_NAME..."
-          zip -r "../$ZIP_NAME" ./zip/*
-          # Patch for OPAce5Pro
+          echo "Creating zip file $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" ./*
+          
+          # Create CN-version ZIP only for OPAce5Pro
           if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
-            sed -i 's/hmbird//xxbird/g' dtbo.img
-            zip -r "../$ZIP_NAME-CN-version.zip" ./zip/*
+            echo "Creating CN-version ZIP for OPAce5Pro..."
+            sed -i 's/hmbird/xxbird/g' dtbo.img
+            zip -r "../$ZIP_NAME-CN-version.zip" ./*
           fi
 
       - name: "📤 Upload to Build Artifacts"
@@ -686,4 +693,4 @@ jobs:
         with:
           name: kernel-${{ env.CONFIG }}
           path: |
-            *.zip          
+            *.zip
