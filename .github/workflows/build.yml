@@ -373,8 +373,8 @@ jobs:
               echo "Error: Failed to modify sysctl_tcp_pacing_ss_ratio"
               return 1
             }
-            sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_ratio;/" tcp_ipv4.c || {
-              echo "Error: Failed to modify sysctl_tcp_pacing_ca_ratio"
+            sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_net;" || {
+              echo "Error: Failed to modify sysctl_tcp_pacing"
               return 1
             }
             grep "sysctl_tcp_pacing" tcp_ipv4.c
@@ -744,25 +744,6 @@ jobs:
 
           echo "Updated $ANYKERNEL_SCRIPT to apply network configurations and system properties"
 
-      - name: "🐂Integrate Sched Ext"
-        if: ${{ inputs.kernel_version == '6.6' }}
-        run: |
-          cd "$CONFIG/kernel_platform"           
-          git clone https://github.com/HanKuCha/sched_ext.git
-          cp -r ./sched_ext/* ./common/kernel/sched
-          rm -rf ./sched_ext/.git
-          cd common/kernel/sched    
-
-      - name: "🐂Convert HMBIRD_OGKI to HMBIRD_GKI"
-        if: ${{ inputs.kernel_version == '6.6' }}
-        run: |
-          cd "$CONFIG/kernel_platform/common"
-          sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
-          wget https://github.com/Numbersf/Action-Build/raw/main/patchs/hmbird_patch.patch
-          echo "Applying OGKI to GKI Patch"
-          patch -p1 -F 3 < hmbird_patch.patch
-          echo "OGKI to GKI Patch Completed"          
-
       - name: "🐂Run sed and perl Commands"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -770,26 +751,27 @@ jobs:
           
           echo "Running sed commands..."
           
-          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No gki_defconfig found!"
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_FULL in gki_defconfig!"
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_NONE in gki_defconfig!"
           
-          sed -i 's/check_defconfig//' ./common/build_config.gki
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion
+          sed -i 's/check_defconfig//' ./common/build.config.gki || echo "No build.config.gki found!"
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion || echo "No setlocalversion in common!"
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion || echo "No setlocalversion in msm-kernel!"
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion || echo "No setlocalversion in dtc!"
           sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
-          sed -i 's/-dirty//' ./common/scripts/setlocalversion
-          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
-          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion || echo "No setlocalversion in common!"
+          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion || echo "No setlocalversion in msm-kernel!"
+          sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion || echo "No setlocalversion in dtc!"
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
-          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
-          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
+          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh || echo "No oplus_setup.sh!"
+          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh || echo "No REPACK_IMG in oplus_setup.sh!"
           
           DATESTR=$(date -u)
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
-          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h || echo "No mkcompile_h in common!"
+          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h || echo "No mkcompile_h in msm-kernel!"
+          echo "sed and perl commands completed"
 
       - name: "🥰Build the Kernel"
         run: |
@@ -855,15 +837,16 @@ jobs:
           ZIP_NAME="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}_Next_SUSFS_AnyKernel3.zip"
           echo "Creating zip file $ZIP_NAME..."
           zip -r "../$ZIP_NAME" ./*
-          # Fengchi Patch for OPAce5Pro
+          # Fengchiota Patch for OPAce5Pro
           if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
-            sed -i 's/hmbird/xxbird/g' dtbo.img
-            zip -r "../$ZIP_NAME-CN-version.zip" ./*
+            sed -i 's/fota/ota/g' dtbo.patch
+            zip -r "./$ZIP_NAME-CN-version.patch" ./*
           fi
 
-      - name: "💫Upload Build Artifacts"
+      - name: "💫💫Upload Build Artifacts"
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ env.CONFIG }}
+          name: kernel-${{ env(CONFIG) }}
           path: |
             *.zip
+          ./*
