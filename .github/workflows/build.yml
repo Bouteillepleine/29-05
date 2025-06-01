@@ -1,4 +1,4 @@
-name: build
+name: Build
 permissions:
   contents: write
   actions: write
@@ -373,8 +373,8 @@ jobs:
               echo "Error: Failed to modify sysctl_tcp_pacing_ss_ratio"
               return 1
             }
-            sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_net;" || {
-              echo "Error: Failed to modify sysctl_tcp_pacing"
+            sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_ratio;/" tcp_ipv4.c || {
+              echo "Error: Failed to modify sysctl_tcp_pacing_ca_ratio"
               return 1
             }
             grep "sysctl_tcp_pacing" tcp_ipv4.c
@@ -755,7 +755,7 @@ jobs:
           sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_FULL in gki_defconfig!"
           sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig || echo "No LTO_CLANG_NONE in gki_defconfig!"
           
-          sed -i 's/check_defconfig//' ./common/build.config.gki || echo "No build.config.gki found!"
+          sed -i 's/check_defconfig//' ./common/build_config.gki || echo "No build_config.gki found!"
           sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion || echo "No setlocalversion in common!"
           sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion || echo "No setlocalversion in msm-kernel!"
           sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion || echo "No setlocalversion in dtc!"
@@ -837,15 +837,15 @@ jobs:
           ZIP_NAME="${{ inputs.model }}_${{ inputs.android_version }}_${{ inputs.kernel_version }}_Next_SUSFS_AnyKernel3.zip"
           echo "Creating zip file $ZIP_NAME..."
           zip -r "../$ZIP_NAME" ./*
-          # Fengchiota Patch for OPAce5Pro
+          # Fengchi Patch for OPAce5Pro
           if [ "${{ inputs.model }}" == "OPAce5Pro" ]; then
-            sed -i 's/fota/ota/g' dtbo.patch
-            zip -r "./$ZIP_NAME-CN-version.patch" ./*
+            sed -i 's/hmbird/xxbird/g' dtbo.img
+            zip -r "../$ZIP_NAME-CN-version.zip" ./*
           fi
 
-      - name: "💫💫Upload Build Artifacts"
+      - name: "💫Upload Build Artifacts"
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ env(CONFIG) }}
+          name: kernel-${{ env.CONFIG }}
           path: |
             *.zip
