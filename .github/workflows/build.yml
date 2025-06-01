@@ -508,34 +508,34 @@ jobs:
             patch -p1 -F 3 < hmbird_patch.patch
             echo "  OGKI to GKI Patch completed successfully"          "
 
-      - name: "🐂 Run sed and perl Commands for Commands"
+      - name: "🐂 Run sed and perl Commands"
         run: |
-          echo "Changing to configuration directory: $CONFIG/..."
-          cd "$CONFIG"/kernel_platform"
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/kernel_platform"
           
-          echo "Running  sed commands..."
+          echo "Running sed commands..."
           
-          sed -i '/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common//arch/arm64/configs/gki_defconfig
-          sed -i '/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common//arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO=n/CONFIG_LTO=y/' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' ./common/arch/arm64/configs/gki_defconfig
           
-          seditemize -i 's/check_defconfig//' ./common/build.config.gki
-          sed -i '$'s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel//scripts/setlocalversion
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./msm-kernel/scripts/setlocalversion
           sed -i '$s|echo "\$res"|echo "\$res"|' ./external/dtc/scripts/setlocalversion
-          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf//impl/stamp.bzl || echo "No stamp.bzl!"
-          sed -i '/s/-dirty//' ./common/scripts/setlocalversion
-          sed -i 's/-dirty//' ./msm-kernel//scripts/setlocalversion
+          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl || echo "No stamp.bzl!"
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          sed -i 's/-dirty//' ./msm-kernel/scripts/setlocalversion
           sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
-          sed -i '/s/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!" || echo "No workspace_status_stamp.py!"
+          sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
-          sed -i '//echo '"LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
-          sed -i ''s/export\tREPACK_IMGS=true/export\tREPACK_IMGS=false/g' ./oplus/build//oplus_setup.sh
+          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build_common.sh
+          sed -i 's/export\s*REPACK_IMGS=true/export REPACK_IMGS=false/g' ./oplus/build_common.sh
           
-          DATESTRAT=$(date -u)
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common//scripts/mkcompile_h
-          perl -pi -e 's{UTS_VERSION="\$\s*.*$S}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel//scripts/mkcompile_h
-
+          DATESTR=$(date -u)
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTSUX \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PRETTY $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
+          
       - name: "📦 Build the Kernel"
         run: |
           echo "Building the kernel..."
