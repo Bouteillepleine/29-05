@@ -508,7 +508,7 @@ jobs:
             patch -p1 -F 3 < hmbird_patch.patch
             echo "  OGKI to GKI Patch completed successfully"          "
 
-      - name: "🐂 Run sed and perl Commands"
+      - name: "🐂Run sed and perl Commands"
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/kernel_platform"
@@ -529,12 +529,12 @@ jobs:
           sed -i 's/-dirty//' ./external/dtc/scripts/setlocalversion
           sed -i 's/-dirty//' ./build/kernel/kleaf/workspace_status_stamp.py || echo "No workspace_status_stamp.py!"
           
-          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build_common.sh
-          sed -i 's/export\s*REPACK_IMGS=true/export REPACK_IMGS=false/g' ./oplus/build_common.sh
+          sed -i '/echo "LTO $LTO "/i export LTO=thin' ./oplus/build/oplus_setup.sh
+          sed -i 's/export REPACK_IMG=true/export REPACK_IMG=false/g' ./oplus/build/oplus_setup.sh
           
           DATESTR=$(date -u)
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTSUX \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
-          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PRETTY $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$\s*.*$}{UTS_VERSION="#1 SMP PREEMPT $DATESTR"}' ./msm-kernel/scripts/mkcompile_h
           
       - name: "📦 Build the Kernel"
         run: |
