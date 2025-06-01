@@ -618,7 +618,7 @@ jobs:
           echo "Creating zip file $ZIP_NAME..."
           zip -r "../$ZIP_NAME" ./*
           # Fengchi Patch for OP13r
-          if [ "${{ inputs.model }}" == "OP13r" ]; then
+          if [ "${{ inputs.model }}" == ""OPAce5Pro" ]; then
             sed -i 's/hmbird/xxbird/g' dtbo.img
             zip -r "../$ZIP_NAME-CN-version.zip" ./*
           fi
