@@ -345,39 +345,29 @@ jobs:
           configure_ecn() {
             sed -i 's/net->ipv4.sysctl_tcp_ecn = 2;/net->ipv4.sysctl_tcp_ecn = 2;/' tcp_ipv4.c || {
               echo "Error: Failed to modify sysctl_tcp_ecn"
-              return 1
+              exit 1
             }
             sed -i 's/net->ipv4.sysctl_tcp_ecn_fallback = 1;/net->ipv4.sysctl_tcp_ecn_fallback = 1;/' tcp_ipv4.c || {
               echo "Error: Failed to modify sysctl_tcp_ecn_fallback"
-              return 1
-            }
-            sed -i 's/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn"/, /^[[:space:]]*\}/' sysctl_net_ipv4.c || {
-              echo "Error: Failed to modify sysctl_net_ipv4.c for tcp_ecn"
-              return 1
-            }
-            cp tcp_ipv4.c tcp_ipv4.c.bak 2>/dev/null || echo "Warning: Failed to copy tcp_ipv4.c"
-              echo "Error: Failed to modify sysctl_tcp_ipv4.c for tcp_ecn"
-              return 1
-            }
-            sed -i '/\.procname[[:space:]]*=[[:space:]]*"tcp_ecn_fallback"/, /^[[:space:]]*\}/' sysctl_net_ipv4.c || {
-              echo "Error: Failed to modify sysctl_net_ipv4.c for tcp_ecn_fallback"
-              return 1
+              exit 1
             }
             grep "sysctl_tcp_ecn" tcp_ipv4.c
             grep -A6 '\.procname.*tcp_ecn' sysctl_net_ipv4.c
             grep -A6 '\.procname.*tcp_ecn_fallback' sysctl_net_ipv4.c
+          }
+
           # Function to configure TCP pacing
           configure_pacing() {
             local ss_ratio=175
             local ca_ratio=115
-            [ "$NETWORK_TYPE" ] && ss_ratio=180 && ca_ratio=120
+            [ "$NETWORK_TYPE" = "wan" ] && ss_ratio=180 && ca_ratio=120
             sed -i "s/net->ipv4.sysctl_tcp_pacing_ss_ratio = 200;/net->ipv4.sysctl_tcp_pacing_ss_ratio = $ss_ratio;/" tcp_ipv4.c || {
               echo "Error: Failed to modify sysctl_tcp_pacing_ss_ratio"
-              return 1
+              exit 1
             }
             sed -i "s/net->ipv4.sysctl_tcp_pacing_ca_ratio = 120;/net->ipv4.sysctl_tcp_pacing_ca_ratio = $ca_ratio;/" tcp_ipv4.c || {
               echo "Error: Failed to modify sysctl_tcp_pacing_ca_ratio"
-              return 1
+              exit 1
             }
             grep "sysctl_tcp_pacing" tcp_ipv4.c
           }
@@ -386,7 +376,7 @@ jobs:
           configure_sysctl() {
             mkdir -p "$ANYKERNEL_DIR" || {
               echo "Error: Failed to create $ANYKERNEL_DIR"
-              return 1
+              exit 1
             }
             cat << EOF > "$SYSCTL_CONF"
           net.ipv4.tcp_rmem = 4096 87380 6291456
@@ -409,20 +399,20 @@ jobs:
           configure_interface() {
             cat << EOF >> "$SYSCTL_CONF"
           # Apply on target device with:
-          #          ethtool -C <interface> rx-usecs e100 rx-frames 25
+          # ethtool -C <interface> rx-usecs 100 rx-frames 25
           # ethtool -C <interface> tx-usecs 100 tx-frames 25
           # ethtool -K <interface> gro on
           # Benchmark on target device with:
-          #          iperf3 -c <server_ip> -t 10 -P 4
+          # iperf3 -c <server_ip> -t 10 -P 4
           EOF
             echo "Interface tuning instructions added to $SYSCTL_CONF"
           }
 
           # Verify function existence
-          if [ ! declare -f configure_interface ]; then
+          if ! declare -f configure_interface > /dev/null; then
             echo "Error: configure_interface function not defined"
             exit 1
-          fi]
+          fi
 
           # Execute configurations
           configure_ecn || { echo "Error: ECN configuration failed"; exit 1; }
@@ -431,27 +421,27 @@ jobs:
           configure_interface || { echo "Error: Interface configuration failed"; exit 1; }
 
           # List modified files
-          ls -t | grep -E 'tcp_|sysctl_' || { echo "Warning: No matching files found"; }
+          ls -t | grep -E 'tcp_|sysctl_' || echo "Warning: No matching files found"
 
           echo "Network optimizations applied successfully"
 
-      - name: "⚙️ Configure AnyKernel3 to Apply Network Settings"
+      - name: "⚙️Configure AnyKernel3 to Apply Network Settings"
         run: |
           ANYKERNEL_DIR="${GITHUB_WORKSPACE}/AnyKernel3"
           ANYKERNEL_SCRIPT="${ANYKERNEL_DIR}/anykernel.sh"
-          
+
           # Check if anykernel.sh exists
           if [ ! -f "$ANYKERNEL_SCRIPT" ]; then
             echo "Error: $ANYKERNEL_SCRIPT not found"
             exit 1
           fi
-          
+
           # Backup anykernel.sh
           cp "$ANYKERNEL_SCRIPT" "$ANYKERNEL_SCRIPT.bak"
 
           # Add commands to apply sysctl and ethtool settings
           cat << 'EOF' >> "$ANYKERNEL_SCRIPT"
-          
+
           # Apply network configurations
           ui_print "- Applying network configurations"
           write_boot
@@ -469,36 +459,36 @@ jobs:
             ui_print "  Error: sysctl.conf not found in ZIP"
             exit 1
           fi
-          
+
           # Apply ethtool settings
           INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print $2}' | cut -d':' -f1 | head -n1)
           if [ -n "$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
             ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool rx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool rx settings"
             ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25 >/dev/null 2>&1 && ui_print "  Applied ethtool tx settings to $INTERFACE" || ui_print "  Warning: Failed to apply ethtool tx settings"
-            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GKI on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
+            ethtool -K "$INTERFACE" gro on >/dev/null 2>&1 && ui_print "  Enabled GRO on $INTERFACE" || ui_print "  Warning: Failed to enable GRO"
           else
             ui_print "  Warning: ethtool or network interface not found, skipping interface tuning"
           fi
-          
-          # Create startup script for persistent network settings
+
+          # Create startup script for persistent ethtool settings
           mkdir -p /data/adb/service.d
           cat << EOT > /data/adb/service.d/network_tune.sh
           #!/system/bin/sh
-          # Wait for for network interface
+          # Wait for network interface
           sleep 5
-          INTERFACE=$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
-          if [ -n "$INTERFACE" ]; then
-            ethtool -C "$INTERFACE" rx-usecs 100 rx-frames 25
-            ethtool -C "$INTERFACE" tx-usecs 100 tx-frames 25
-            ethtool -K "$INTERFACE" gro on
+          INTERFACE=\$(ip link | grep -E 'wlan0|rmnet0' | awk '{print \$2}' | cut -d':' -f1 | head -n1)
+          if [ -n "\$INTERFACE" ] && command -v ethtool >/dev/null 2>&1; then
+            ethtool -C "\$INTERFACE" rx-usecs 100 rx-frames 25
+            ethtool -C "\$INTERFACE" tx-usecs 100 tx-frames 25
+            ethtool -K "\$INTERFACE" gro on
           fi
           EOT
           chmod 755 /data/adb/service.d/network_tune.sh
           ui_print "  Created startup script for persistent network settings"
           EOF
-          
-          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
 
+          echo "Updated $ANYKERNEL_SCRIPT to apply network configurations"
+          
       - name: "🐂 Integrate Sched Ext"
         if: ${{ inputs.kernel_version == '6.6' }}
         run: |
